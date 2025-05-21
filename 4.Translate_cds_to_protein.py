@@ -4,23 +4,23 @@ from Bio.SeqRecord import SeqRecord
 import argparse
 
 def translate_cds_to_protein(input_folder, output_folder, genetic_code=1):
-    # 确保输出文件夹存在
+    # Ensure output folder exists
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    # 遍历输入文件夹中的所有文件
+    # Iterate through all files in the input folder
     for filename in os.listdir(input_folder):
-        if filename.endswith(".fa") or filename.endswith(".fasta"):
+        if filename.endswith(".fa") or filename.endswith(".fasta"): # Ensure FASTA files are processed
             input_path = os.path.join(input_folder, filename)
             output_filename = filename.replace(".fasta", "_protein.fasta").replace(".fa", "_protein.fa")
             output_path = os.path.join(output_folder, output_filename)
-            # 读取CDS序列，翻译成蛋白质，并保存
+            # Read CDS sequences, translate to protein, and save
             with open(output_path, 'w') as output_file:
                 protein_records = []
                 for record in SeqIO.parse(input_path, "fasta"):
                     protein_seq = record.seq.translate(table=genetic_code, to_stop=True)
                     protein_record = SeqRecord(protein_seq, id=record.id, description="")
                     protein_records.append(protein_record)
-                # 将翻译后的蛋白质序列写入新文件
+                # Write translated protein sequences to a new file
                 SeqIO.write(protein_records, output_file, "fasta")
 
 def main():
