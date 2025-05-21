@@ -15,7 +15,7 @@
 ## 1.Search_for_OG_for_candidate_genes.py
 
 **功能**:
-此脚本根据提供的候选基因列表，在 OrthoFinder 的输出结果中查找对应的直系同源组 (Orthogroups)，并将这些组相关的多序列比对 (MSA) 文件复制到指定输出目录。
+此脚本根据提供的候选基因列表和指定的物种，在 OrthoFinder 的输出结果中查找对应的直系同源组 (Orthogroups)，并将这些组相关的多序列比对 (MSA) 文件复制到指定输出目录。
 
 **参数**:
 *   `--gene_list_file`: 候选基因列表的 CSV 文件路径。
@@ -26,10 +26,12 @@
     *   默认值: `/home/yuhangjia/data/AlternativeSplicing/exon_expansion_test/orthofinder/output_msa_2/Results_Jul05/MultipleSequenceAlignments`
 *   `--output_dir`: 保存筛选出的 MSA 文件的目录路径。
     *   默认值: `selected_msa_files_deg`
+*   `--species`: 在 `Orthogroups.tsv` 文件中要搜索基因的物种列的名称。
+    *   默认值: `Apis_mellifera`
 
 **输入**:
 *   一个 CSV 文件，每行包含一个基因 ID（位于第一列）。
-*   OrthoFinder 生成的 `Orthogroups.tsv` 文件。
+*   OrthoFinder 生成的 `Orthogroups.tsv` 文件，其表头包含各个物种的名称。
 *   一个包含 OrthoFinder 生成的 MSA 文件的目录。
 
 **输出**:
