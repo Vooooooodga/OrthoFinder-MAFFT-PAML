@@ -9,6 +9,7 @@
 4.  [4.Translate_cds_to_protein.py](#4translate_cds_to_proteinpy)
 5.  [5.run_MAFFT_for_aa_msa.sh](#5run_mafft_for_aa_msash)
 6.  [pal2nal.pl](#pal2nalpl)
+7.  [run_pal2nal.sh](#run_pal2nalsh)
 
 ---
 
@@ -162,9 +163,39 @@ perl pal2nal.pl pep.aln nuc.fasta [nuc.fasta...] [options] > output_codon_alignm
 
 ---
 
+## run_pal2nal.sh
+
+**功能**:
+这是一个 Shell 脚本，用于批量使用 pal2nal.pl 将比对后的蛋白质序列和对应的 CDS 序列转换为密码子比对。脚本会自动查找蛋白质比对目录中的所有文件，并在 CDS 目录中寻找对应的核酸序列文件，然后调用 pal2nal.pl 进行转换。
+
+**用法**:
+```bash
+./run_pal2nal.sh <蛋白质比对目录> <CDS序列目录> <输出目录> [密码子表编号]
+```
+
+**参数**:
+*   `<蛋白质比对目录>`: 包含比对后的蛋白质序列的目录路径（如 `aligned_translated_proteins_deg`）。
+*   `<CDS序列目录>`: 包含 CDS 序列的目录路径（如 `cds_sequences_deg`）。
+*   `<输出目录>`: 保存生成的密码子比对文件的目录路径。
+*   `[密码子表编号]`: 可选参数，指定使用的密码子表编号（默认为 `1`，即标准通用密码子表）。
+
+**输入**:
+*   一个包含比对后的蛋白质序列的目录，其中每个文件通常代表一个直系同源组。
+*   一个包含对应 CDS 序列的目录，其中文件名格式应为 `[base_name]_cds.fa`，其中 `[base_name]` 是蛋白质比对文件去掉扩展名后的名称。
+
+**输出**:
+*   在指定的输出目录下，为每个成功处理的输入文件生成一个对应的密码子比对文件。输出文件名格式为 `[base_name]_codon.aln`。
+*   脚本会显示处理进度和统计信息，包括总文件数、成功处理的文件数和失败的文件数。
+
+**注意事项**:
+*   脚本假设 pal2nal.pl 位于 `./pal2nal.v14/pal2nal.pl`。如果您的路径不同，请编辑脚本中的 `PAL2NAL` 变量。
+*   输出格式默认为 PAML 格式。如果需要其他格式，请编辑脚本中的 `-output paml` 参数。
+*   请确保您的系统已安装 Perl 环境。
+
+---
+
 ## 引文
 
-Reference:
 Mikita Suyama, David Torrents, and Peer Bork (2006)
 PAL2NAL: robust conversion of protein sequence alignments into the corresponding codon alignments.
 Nucleic Acids Res. 34, W609-W612. 
