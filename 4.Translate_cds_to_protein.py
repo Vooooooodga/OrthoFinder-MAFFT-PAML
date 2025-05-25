@@ -1,7 +1,6 @@
 import os
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
-from Bio.Seq import Seq
 import argparse
 
 def translate_cds_to_protein(input_folder, output_folder, genetic_code=1):
@@ -18,13 +17,9 @@ def translate_cds_to_protein(input_folder, output_folder, genetic_code=1):
             with open(output_path, 'w') as output_file:
                 protein_records = []
                 for record in SeqIO.parse(input_path, "fasta"):
-                    original_seq_len = len(record.seq)
+                    if len(record.seq) % 3 != 0:
+                        print(f"详细警告: 文件 {filename} (Orthogroup) 中的序列 {record.id} 长度为 {len(record.seq)}, 不是3的倍数。Biopython将尝试截断末尾核苷酸进行翻译。")
                     protein_seq = record.seq.translate(table=genetic_code, stop_symbol='X')
-
-                    if original_seq_len % 3 != 0:
-                        print(f"详细警告: 文件 {filename} (Orthogroup) 中的序列 {record.id} 长度为 {original_seq_len}, 不是3的倍数。翻译结果末尾将添加一个 'X' 代表不完整或未知的氨基酸。")
-                        protein_seq += Seq("X")
-                    
                     protein_record = SeqRecord(protein_seq, id=record.id, description="")
                     protein_records.append(protein_record)
                 # Write translated protein sequences to a new file
