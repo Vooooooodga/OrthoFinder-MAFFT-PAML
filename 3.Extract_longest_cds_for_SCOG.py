@@ -62,11 +62,30 @@ def main():
                         if not subspecies_found:
                             species_id = '_'.join(parts[:2])
                             gene_id = '_'.join(parts[2:])
+                        
+                        # identifier is used for the output FASTA header if a match is found.
+                        # It should reflect the ID as seen in the MSA.
                         identifier = f"{species_id}_{gene_id}"
-                        # Check if the index contains this species and gene ID
-                        if species_id in index and gene_id in index[species_id]:
-                            seq_record = index[species_id][gene_id]
-                            output_file.write(f">{identifier}\n{str(seq_record.seq)}\n")
+
+                        seq_record_found = None
+                        if species_id in index:
+                            # Attempt 1: Direct lookup using the gene_id from MSA
+                            if gene_id in index[species_id]:
+                                seq_record_found = index[species_id][gene_id]
+                            else:
+                                # Attempt 2: Fallback for parenthesis to underscore conversion by OrthoFinder
+                                # Iterate through keys from the nucleotide database for this species.
+                                # These keys are what `parse_description` extracted (e.g., "Su(h)").
+                                for db_key_original, record_from_db in index[species_id].items():
+                                    # Apply OrthoFinder's presumed transformation to the DB key: ( ) -> _
+                                    mangled_db_key = db_key_original.replace('(', '_').replace(')', '_')
+                                    
+                                    if mangled_db_key == gene_id:
+                                        seq_record_found = record_from_db
+                                        break 
+                        
+                        if seq_record_found:
+                            output_file.write(f">{identifier}\n{str(seq_record_found.seq)}\n")
                         else:
                             print(f"No valid identifier found for {msa_file} of {species_id}: {gene_id}.")
     print("CDS sequence extraction completed.")
