@@ -17,6 +17,8 @@ def translate_cds_to_protein(input_folder, output_folder, genetic_code=1):
             with open(output_path, 'w') as output_file:
                 protein_records = []
                 for record in SeqIO.parse(input_path, "fasta"):
+                    if len(record.seq) % 3 != 0:
+                        print(f"详细警告: 文件 {filename} (Orthogroup) 中的序列 {record.id} 长度为 {len(record.seq)}, 不是3的倍数。Biopython将尝试截断末尾核苷酸进行翻译。")
                     protein_seq = record.seq.translate(table=genetic_code, to_stop=True)
                     protein_record = SeqRecord(protein_seq, id=record.id, description="")
                     protein_records.append(protein_record)
