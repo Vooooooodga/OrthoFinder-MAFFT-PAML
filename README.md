@@ -170,7 +170,7 @@ perl pal2nal.pl pep.aln nuc.fasta [nuc.fasta...] [options] > output_codon_alignm
 
 **用法**:
 ```bash
-./run_pal2nal.sh <蛋白质比对目录> <CDS序列目录> <输出目录> [密码子表编号]
+./run_pal2nal.sh <蛋白质比对目录> <CDS序列目录> <输出目录> [密码子表编号] [-format <输出格式>]
 ```
 
 **参数**:
@@ -178,6 +178,7 @@ perl pal2nal.pl pep.aln nuc.fasta [nuc.fasta...] [options] > output_codon_alignm
 *   `<CDS序列目录>`: 包含 CDS 序列的目录路径（如 `cds_sequences_deg`）。
 *   `<输出目录>`: 保存生成的密码子比对文件的目录路径。
 *   `[密码子表编号]`: 可选参数，指定使用的密码子表编号（默认为 `1`，即标准通用密码子表）。
+*   `[-format <输出格式>]`: 可选参数，指定输出格式（默认为 `paml`）。可选值包括：`clustal`、`paml`、`fasta`、`codon`。
 
 **输入**:
 *   一个包含比对后的蛋白质序列的目录，其中每个文件通常代表一个直系同源组。
@@ -189,7 +190,6 @@ perl pal2nal.pl pep.aln nuc.fasta [nuc.fasta...] [options] > output_codon_alignm
 
 **注意事项**:
 *   脚本假设 pal2nal.pl 位于 `./pal2nal.v14/pal2nal.pl`。如果您的路径不同，请编辑脚本中的 `PAL2NAL` 变量。
-*   输出格式默认为 PAML 格式。如果需要其他格式，请编辑脚本中的 `-output paml` 参数。
 *   请确保您的系统已安装 Perl 环境。
 
 ---
