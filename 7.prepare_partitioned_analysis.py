@@ -34,13 +34,18 @@ def get_tree_length_from_iqtree_log(iqtree_file_path):
     try:
         with open(iqtree_file_path, 'r') as f:
             for line in f:
-                if line.startswith("Total tree length:"):
+                # 修改: 使用正则表达式以适应更灵活的格式
+                match = re.search(r"Total tree length.*:\\s*(\\d+\\.?\\d*)", line)
+                if match:
                     try:
-                        length = float(line.split(":")[1].strip())
+                        length = float(match.group(1)) # 从匹配组中提取长度
                         return length
                     except ValueError:
                          print(f"警告: 无法从 '{line.strip()}' 解析树长于 {iqtree_file_path}", file=sys.stderr)
                          return None
+    except FileNotFoundError: # 确保文件未找到时有明确提示
+        print(f"警告: IQ-TREE 日志文件未找到: {iqtree_file_path}", file=sys.stderr)
+        return None
     except Exception as e:
         print(f"警告: 解析 IQ-TREE 日志文件 '{iqtree_file_path}' 时出错 (TreeLen): {e}", file=sys.stderr)
     return None
