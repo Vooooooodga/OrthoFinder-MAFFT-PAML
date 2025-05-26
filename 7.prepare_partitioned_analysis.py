@@ -224,141 +224,182 @@ def main(msa_dir, iqtree_results_dir, concatenated_msa_out, partition_file_out):
     """
     主函数，用于收集数据、筛选基因并生成串联 MSA 和分区文件。
     """
-    print(f"扫描 MSA 目录: {msa_dir}")
-    print(f"扫描 IQ-TREE 结果目录: {iqtree_results_dir}")
-
-    og_files = {}
-    for f_name in os.listdir(msa_dir):
-        if f_name.startswith("OG") and f_name.endswith(".clipkit.fasta"):
-            og_id = f_name.split(".clipkit.fasta")[0]
-            if og_id not in og_files: og_files[og_id] = {}
-            og_files[og_id]['msa'] = os.path.join(msa_dir, f_name)
-
-    for f_name in os.listdir(iqtree_results_dir):
-        if f_name.startswith("OG") and f_name.endswith(".clipkit.iqtree"):
-            og_id = f_name.split(".clipkit.iqtree")[0]
-            if og_id in og_files:
-                og_files[og_id]['iqtree_log'] = os.path.join(iqtree_results_dir, f_name)
-
-    # --- 1. 数据收集 ---
-    print("\n--- 1. 正在收集基因数据 ---")
-    og_stats = []
-    all_species_set = set()
+    # --- 日志记录设置 ---
+    base_log_name = os.path.splitext(concatenated_msa_out)[0]
+    log_file_name = f"{base_log_name}_pipeline.log"
     
-    for og_id in sorted(og_files.keys()):
-        og_data = og_files[og_id]
-        if 'msa' not in og_data or 'iqtree_log' not in og_data:
-            print(f"跳过 {og_id}: 缺少 MSA 或 IQ-TREE 日志。", file=sys.stderr)
-            continue
+    # 初始消息打印到控制台
+    print(f"脚本开始运行。所有详细输出将被重定向到日志文件: {os.path.abspath(log_file_name)}")
 
-        print(f"  正在处理 {og_id}...")
-        sequences, msa_len, current_og_species = read_fasta(og_data['msa'])
-        if not sequences or msa_len == 0:
-            print(f"  -> 跳过 {og_id}: MSA 为空或读取失败。", file=sys.stderr)
-            continue
-
-        model = get_best_model_from_iqtree_log(og_data['iqtree_log'])
-        if not model:
-            print(f"  -> 跳过 {og_id}: 无法提取模型。", file=sys.stderr)
-            continue
-
-        tree_len = get_tree_length_from_iqtree_log(og_data['iqtree_log'])
-        if tree_len is None:
-            print(f"  -> 跳过 {og_id}: 无法提取树长。", file=sys.stderr)
-            continue
-
-        failed, total = get_compositional_bias_stats(og_data['iqtree_log'])
-        if failed is None:
-            print(f"  -> 跳过 {og_id}: 无法提取成分偏好统计。", file=sys.stderr)
-            continue
-
-        bias_ratio = failed / total if total > 0 else 1.0
-
-        og_stats.append({
-            'id': og_id, 'msa': og_data['msa'], 'iqtree': og_data['iqtree_log'],
-            'len': msa_len, 'tree_len': tree_len, 'bias': bias_ratio,
-            'model': model
-        })
-        all_species_set.update(sequences.keys()) # 使用实际读到的物种
-
-    print(f"成功收集了 {len(og_stats)} 个基因的数据。")
-    all_species_ordered = sorted(list(all_species_set)) # 确定所有物种的最终顺序
-    print(f"共发现 {len(all_species_ordered)} 个物种。")
-
-    # --- 2. 基因筛选 ---
-    print("\n--- 2. 正在筛选基因 ---")
-    initial_count = len(og_stats)
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    log_f_handle = None  # 初始化日志文件句柄
     
-    # 筛选 1: 比对长度
-    og_stats_filtered = [og for og in og_stats if og['len'] >= MIN_MSA_LEN]
-    print(f"比对长度筛选 ({MIN_MSA_LEN} AA): {initial_count} -> {len(og_stats_filtered)}")
+    try:
+        log_f_handle = open(log_file_name, 'w', encoding='utf-8')
+        sys.stdout = log_f_handle
+        sys.stderr = log_f_handle
 
-    # 筛选 2: 成分偏好
-    og_stats_filtered = [og for og in og_stats_filtered if og['bias'] <= MAX_BIAS_RATIO]
-    print(f"成分偏好筛选 (<={MAX_BIAS_RATIO*100}%): {len(og_stats_filtered)} -> {len(og_stats_filtered)}")
+        # --- 原 main 函数的核心逻辑开始 ---
+        print(f"日志记录已启动。输出到: {log_file_name}")
+        print(f"扫描 MSA 目录: {msa_dir}")
+        print(f"扫描 IQ-TREE 结果目录: {iqtree_results_dir}")
 
-    # 筛选 3: 进化速率 (树长)
-    if len(og_stats_filtered) > 10: # 只有足够多基因时才进行百分位筛选
-        tree_lengths = [og['tree_len'] for og in og_stats_filtered]
-        low_threshold = get_percentile(tree_lengths, LOW_RATE_PERCENTILE)
-        high_threshold = get_percentile(tree_lengths, HIGH_RATE_PERCENTILE)
-        print(f"  计算树长阈值: {low_threshold:.4f} ({LOW_RATE_PERCENTILE}%) - {high_threshold:.4f} ({HIGH_RATE_PERCENTILE}%)")
+        og_files = {}
+        for f_name in os.listdir(msa_dir):
+            if f_name.startswith("OG") and f_name.endswith(".clipkit.fasta"):
+                og_id = f_name.split(".clipkit.fasta")[0]
+                if og_id not in og_files: og_files[og_id] = {}
+                og_files[og_id]['msa'] = os.path.join(msa_dir, f_name)
+
+        for f_name in os.listdir(iqtree_results_dir):
+            if f_name.startswith("OG") and f_name.endswith(".clipkit.iqtree"):
+                og_id = f_name.split(".clipkit.iqtree")[0]
+                if og_id in og_files:
+                    og_files[og_id]['iqtree_log'] = os.path.join(iqtree_results_dir, f_name)
+
+        # --- 1. 数据收集 ---
+        print("\n--- 1. 正在收集基因数据 ---")
+        og_stats = []
+        all_species_set = set()
         
-        og_stats_filtered = [og for og in og_stats_filtered if low_threshold <= og['tree_len'] <= high_threshold]
-        print(f"进化速率筛选: {len(tree_lengths)} -> {len(og_stats_filtered)}")
-    else:
-        print("基因数量不足，跳过进化速率筛选。")
+        for og_id in sorted(og_files.keys()):
+            og_data = og_files[og_id]
+            if 'msa' not in og_data or 'iqtree_log' not in og_data:
+                print(f"跳过 {og_id}: 缺少 MSA 或 IQ-TREE 日志。", file=sys.stderr)
+                continue
 
-    final_ogs = og_stats_filtered
-    print(f"最终保留 {len(final_ogs)} 个基因进行串联分析。")
+            print(f"  正在处理 {og_id}...")
+            sequences, msa_len, current_og_species_ordered_headers = read_fasta(og_data['msa']) # Renamed current_og_species for clarity
+            if not sequences or msa_len == 0:
+                print(f"  -> 跳过 {og_id}: MSA 为空或读取失败。", file=sys.stderr)
+                continue
 
-    if not final_ogs:
-        print("错误: 筛选后没有剩余基因。请检查阈值或输入文件。", file=sys.stderr)
-        return
+            model = get_best_model_from_iqtree_log(og_data['iqtree_log'])
+            if not model:
+                print(f"  -> 跳过 {og_id}: 无法提取模型。", file=sys.stderr)
+                continue
 
-    # --- 3. 构建串联 MSA 和分区文件 ---
-    print("\n--- 3. 正在构建串联 MSA 和分区文件 ---")
-    concatenated_sequences = defaultdict(str)
-    partitions = []
-    current_msa_start_pos = 1
+            tree_len = get_tree_length_from_iqtree_log(og_data['iqtree_log'])
+            if tree_len is None:
+                print(f"  -> 跳过 {og_id}: 无法提取树长。", file=sys.stderr)
+                continue
 
-    for og_data in final_ogs:
-        og_id = og_data['id']
-        msa_path = og_data['msa']
-        model = og_data['model']
+            failed, total = get_compositional_bias_stats(og_data['iqtree_log'])
+            if failed is None: # total will also be None
+                print(f"  -> 跳过 {og_id}: 无法提取成分偏好统计。", file=sys.stderr)
+                continue
 
-        print(f"  串联 {og_id}...")
-        sequences, msa_len, _ = read_fasta(msa_path) # 重新读取以获取序列
-        if not sequences or msa_len == 0:
-            print(f"  -> 严重警告: 无法重读 {og_id} 的 MSA，跳过！", file=sys.stderr)
-            continue
+            bias_ratio = failed / total if total > 0 else 1.0 # Avoid division by zero if total is 0 for some reason
 
-        for sp_header in all_species_ordered:
-            if sp_header in sequences:
-                concatenated_sequences[sp_header] += sequences[sp_header]
+            og_stats.append({
+                'id': og_id, 'msa': og_data['msa'], 'iqtree': og_data['iqtree_log'],
+                'len': msa_len, 'tree_len': tree_len, 'bias': bias_ratio,
+                'model': model
+            })
+            # Use actual species from the current OG's sequences
+            all_species_set.update(sequences.keys())
+
+
+        print(f"成功收集了 {len(og_stats)} 个基因的数据。")
+        all_species_ordered = sorted(list(all_species_set)) 
+        print(f"共发现 {len(all_species_ordered)} 个物种。")
+
+        # --- 2. 基因筛选 ---
+        print("\n--- 2. 正在筛选基因 ---")
+        count_before_filtering = len(og_stats) 
+        
+        # 筛选 1: 比对长度
+        og_stats_filtered = [og for og in og_stats if og['len'] >= MIN_MSA_LEN]
+        print(f"比对长度筛选 ({MIN_MSA_LEN} AA): {count_before_filtering} -> {len(og_stats_filtered)}")
+        count_before_filtering = len(og_stats_filtered)
+
+        # 筛选 2: 成分偏好
+        og_stats_filtered = [og for og in og_stats_filtered if og['bias'] <= MAX_BIAS_RATIO]
+        print(f"成分偏好筛选 (<={MAX_BIAS_RATIO*100:.0f}%): {count_before_filtering} -> {len(og_stats_filtered)}")
+        count_before_filtering = len(og_stats_filtered)
+
+        # 筛选 3: 进化速率 (树长)
+        if len(og_stats_filtered) > 10: 
+            tree_lengths = [og['tree_len'] for og in og_stats_filtered]
+            low_threshold = get_percentile(tree_lengths, LOW_RATE_PERCENTILE)
+            high_threshold = get_percentile(tree_lengths, HIGH_RATE_PERCENTILE)
+            
+            if low_threshold is not None and high_threshold is not None:
+                print(f"  计算树长阈值: {low_threshold:.4f} ({LOW_RATE_PERCENTILE}%) - {high_threshold:.4f} ({HIGH_RATE_PERCENTILE}%)")
+                
+                og_stats_temp_rate_filter = [og for og in og_stats_filtered if low_threshold <= og['tree_len'] <= high_threshold]
+                print(f"进化速率筛选: {count_before_filtering} -> {len(og_stats_temp_rate_filter)}")
+                og_stats_filtered = og_stats_temp_rate_filter
             else:
-                concatenated_sequences[sp_header] += "-" * msa_len
+                print(f"  警告: 无法计算树长阈值 (数据不足或 get_percentile 返回 None)，跳过进化速率筛选。")
+        else:
+            print(f"基因数量不足 (当前 {len(og_stats_filtered)} 个，需 >10)，跳过进化速率筛选。")
 
-        partition_end_pos = current_msa_start_pos + msa_len - 1
-        partitions.append(f"{model}, {og_id} = {current_msa_start_pos}-{partition_end_pos}")
-        current_msa_start_pos = partition_end_pos + 1
+        final_ogs = og_stats_filtered
+        print(f"最终保留 {len(final_ogs)} 个基因进行串联分析。")
 
-    # --- 4. 写入输出文件 ---
-    print(f"\n正在写入合并后的 MSA 到: {concatenated_msa_out} ...")
-    with open(concatenated_msa_out, 'w') as f_out:
-        for sp_header in all_species_ordered:
-            f_out.write(f">{sp_header}\n")
-            seq = concatenated_sequences[sp_header]
-            for i in range(0, len(seq), 60):
-                f_out.write(seq[i:i+60] + "\n")
-    print("合并后的 MSA 文件写入完成。")
+        if not final_ogs:
+            print("错误: 筛选后没有剩余基因。请检查阈值或输入文件。", file=sys.stderr)
+            return # 允许 finally 块执行
 
-    print(f"\n正在写入分区文件到: {partition_file_out} ...")
-    with open(partition_file_out, 'w') as f_out:
-        for part_info in partitions:
-            f_out.write(part_info + "\n")
-    print("分区文件写入完成。")
-    print(f"\n成功处理并串联了 {len(final_ogs)} 个 Orthogroups。")
+        # --- 3. 构建串联 MSA 和分区文件 ---
+        print("\n--- 3. 正在构建串联 MSA 和分区文件 ---")
+        concatenated_sequences = defaultdict(str)
+        partitions = []
+        current_msa_start_pos = 1
+
+        for og_data in final_ogs:
+            og_id = og_data['id']
+            msa_path = og_data['msa']
+            model = og_data['model']
+
+            print(f"  串联 {og_id}...")
+            sequences, msa_len, _ = read_fasta(msa_path) 
+            if not sequences or msa_len == 0:
+                print(f"  -> 严重警告: 无法重读 {og_id} 的 MSA，跳过！", file=sys.stderr)
+                continue
+
+            for sp_header in all_species_ordered:
+                if sp_header in sequences:
+                    concatenated_sequences[sp_header] += sequences[sp_header]
+                else:
+                    concatenated_sequences[sp_header] += "-" * msa_len
+
+            partition_end_pos = current_msa_start_pos + msa_len - 1
+            partitions.append(f"{model}, {og_id} = {current_msa_start_pos}-{partition_end_pos}")
+            current_msa_start_pos = partition_end_pos + 1
+
+        # --- 4. 写入输出文件 ---
+        print(f"\n正在写入合并后的 MSA 到: {concatenated_msa_out} ...")
+        with open(concatenated_msa_out, 'w') as f_out:
+            for sp_header in all_species_ordered:
+                f_out.write(f">{sp_header}\n")
+                seq = concatenated_sequences[sp_header]
+                for i in range(0, len(seq), 60):
+                    f_out.write(seq[i:i+60] + "\n")
+        print("合并后的 MSA 文件写入完成。")
+
+        print(f"\n正在写入分区文件到: {partition_file_out} ...")
+        with open(partition_file_out, 'w') as f_out:
+            for part_info in partitions:
+                f_out.write(part_info + "\n")
+        print("分区文件写入完成。")
+        print(f"\n成功处理并串联了 {len(final_ogs)} 个 Orthogroups。")
+        # --- 原 main 函数的核心逻辑结束 ---
+
+    finally:
+        # 恢复 stdout 和 stderr
+        if sys.stdout != original_stdout and log_f_handle: # 检查是否真的发生了重定向
+            sys.stdout = original_stdout
+        if sys.stderr != original_stderr and log_f_handle: # 检查是否真的发生了重定向
+            sys.stderr = original_stderr
+        
+        if log_f_handle: # 关闭日志文件句柄
+            log_f_handle.close()
+        
+        # 最终消息打印到控制台
+        print(f"脚本执行完毕。日志文件已保存到: {os.path.abspath(log_file_name)}")
 
 
 if __name__ == "__main__":
