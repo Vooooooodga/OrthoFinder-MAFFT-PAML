@@ -8,6 +8,7 @@ MIN_MSA_LEN = 200        # 最小比对长度 (AA)
 MAX_BIAS_RATIO = 0.10    # 成分检验失败的最大比例 (例如 0.10 = 10%)
 LOW_RATE_PERCENTILE = 10  # 要移除的最慢进化速率的百分比
 HIGH_RATE_PERCENTILE = 90 # 要移除的最快进化速率的百分比
+MIN_AVG_BOOTSTRAP = 80.0  # 内部节点平均自举支持率的最小阈值 (%)
 # --------------------
 
 def get_best_model_from_iqtree_log(iqtree_file_path):
@@ -219,6 +220,67 @@ def get_percentile(data, percentile_val):
     else: # 插值
         return sorted_data[f] + (sorted_data[c] - sorted_data[f]) * (k - f)
 
+def get_average_bootstrap_from_treefile(treefile_path):
+    """
+    解析 IQ-TREE .treefile 以计算内部节点的平均自举支持率。
+    返回平均自举值 (浮点数)，如果发生错误或未找到支持值，则返回 None。
+    对于序列数 <=3 的树，假定通过，返回 100.0。
+    """
+    try:
+        with open(treefile_path, 'r') as f:
+            tree_string = f.readline().strip() # 假设树在第一行
+
+        if not tree_string:
+            print(f"警告: Treefile {treefile_path} 为空。", file=sys.stderr)
+            return None
+
+        # 统计Tip数量，简单树特殊处理
+        num_tips = tree_string.count(',') + 1 if ',' in tree_string else tree_string.count(':') # 逗号数+1 或 冒号数
+        if not tree_string.strip(";").strip("()").strip(): # 处理空树或单节点树 "();" or "A;"
+             num_tips = 0 
+             if ':' in tree_string: # (A:0.1); is one tip
+                 num_tips = 1
+
+        if num_tips <= 3 and num_tips > 0: # 对于1, 2, 或 3 个序列的树
+            print(f"信息: 在 {treefile_path} 中序列数 ({num_tips}) <=3。假定通过自举值筛选，平均值设为 100.0。", file=sys.stderr)
+            return 100.0
+        elif num_tips == 0 : # 完全空的树字符串
+            print(f"警告: 在 {treefile_path} 中似乎是空树或无法识别的树结构。", file=sys.stderr)
+            return None
+
+        # 正则表达式查找自举值 (整数或浮点数)，它们通常跟在内部节点的右括号后
+        bootstrap_values_str = re.findall(r"\)(\d+(?:\.\d+)?)[:,\]\)]", tree_string)
+        # 更宽松的匹配，仅查找右括号后的数字，可能需要根据IQ-TREE版本调整，确保只匹配内部节点
+        if not bootstrap_values_str:
+             bootstrap_values_str = re.findall(r"\)(\d+(?:\.\d+)?)?", tree_string)
+             # 过滤掉可能由 branch length 带来的空匹配或非数字
+             bootstrap_values_str = [bs for bs in bootstrap_values_str if bs and bs!='.']
+
+
+        if not bootstrap_values_str:
+            print(f"警告: 在 {treefile_path} (序列数: {num_tips}) 中未找到内部节点自举值。", file=sys.stderr)
+            return None 
+
+        bootstrap_values_float = []
+        for val_str in bootstrap_values_str:
+            try:
+                bootstrap_values_float.append(float(val_str))
+            except ValueError:
+                print(f"警告: 在 {treefile_path} 中无法将自举值 '{val_str}' 转换为浮点数。", file=sys.stderr)
+                # 可选择跳过此值或使整个OG失败
+        
+        if not bootstrap_values_float:
+            print(f"警告: 在 {treefile_path} 中所有提取的自举值都无法解析为数字。", file=sys.stderr)
+            return None
+
+        average_bootstrap = sum(bootstrap_values_float) / len(bootstrap_values_float)
+        return average_bootstrap
+
+    except FileNotFoundError:
+        print(f"警告: Treefile 未找到: {treefile_path}", file=sys.stderr)
+    except Exception as e:
+        print(f"警告: 解析 treefile '{treefile_path}' 时出错 (Bootstrap): {e}", file=sys.stderr)
+    return None
 
 def main(msa_dir, iqtree_results_dir, concatenated_msa_out, partition_file_out):
     """
@@ -276,7 +338,7 @@ def main(msa_dir, iqtree_results_dir, concatenated_msa_out, partition_file_out):
 
             print(f"  正在处理 {og_id}...")
             if log_f_handle: log_f_handle.flush()
-            sequences, msa_len, current_og_species_ordered_headers = read_fasta(og_data['msa']) # Renamed current_og_species for clarity
+            sequences, msa_len, current_og_species_ordered_headers = read_fasta(og_data['msa'])
             if not sequences or msa_len == 0:
                 print(f"  -> 跳过 {og_id}: MSA 为空或读取失败。", file=sys.stderr)
                 if log_f_handle: log_f_handle.flush()
@@ -299,15 +361,25 @@ def main(msa_dir, iqtree_results_dir, concatenated_msa_out, partition_file_out):
                 print(f"  -> 跳过 {og_id}: 无法提取成分偏好统计。", file=sys.stderr)
                 if log_f_handle: log_f_handle.flush()
                 continue
+            
+            bias_ratio = failed / total if total > 0 else 1.0
 
-            bias_ratio = failed / total if total > 0 else 1.0 # Avoid division by zero if total is 0 for some reason
+            # 新增：获取平均自举值
+            treefile_name = f"{og_id}.clipkit.treefile"
+            treefile_path = os.path.join(iqtree_results_dir, treefile_name)
+            avg_bootstrap = None
+            if os.path.exists(treefile_path):
+                avg_bootstrap = get_average_bootstrap_from_treefile(treefile_path)
+            else:
+                print(f"警告: {og_id} 的 Treefile 未找到于: {treefile_path}。无法计算平均自举值。", file=sys.stderr)
+                if log_f_handle: log_f_handle.flush()
 
             og_stats.append({
                 'id': og_id, 'msa': og_data['msa'], 'iqtree': og_data['iqtree_log'],
                 'len': msa_len, 'tree_len': tree_len, 'bias': bias_ratio,
-                'model': model
+                'model': model,
+                'avg_bootstrap': avg_bootstrap # 添加平均自举值
             })
-            # Use actual species from the current OG's sequences
             all_species_set.update(sequences.keys())
 
 
@@ -354,6 +426,25 @@ def main(msa_dir, iqtree_results_dir, concatenated_msa_out, partition_file_out):
         else:
             print(f"基因数量不足 (当前 {len(og_stats_filtered)} 个，需 >10)，跳过进化速率筛选。")
             if log_f_handle: log_f_handle.flush()
+
+        # 新增：筛选 4: 平均自举值
+        if MIN_AVG_BOOTSTRAP > 0: # 只有当阈值大于0时才执行此筛选
+            og_stats_filtered_bootstrap = []
+            for og_entry in og_stats_filtered:
+                avg_bs = og_entry.get('avg_bootstrap')
+                if avg_bs is not None and avg_bs >= MIN_AVG_BOOTSTRAP:
+                    og_stats_filtered_bootstrap.append(og_entry)
+                elif avg_bs is None:
+                    print(f"信息: OG {og_entry['id']} 因无法计算平均自举值而被自举值筛选移除。", file=sys.stderr)
+                    if log_f_handle: log_f_handle.flush()
+                else: # avg_bs is not None but < MIN_AVG_BOOTSTRAP
+                    print(f"信息: OG {og_entry['id']} 平均自举值 {avg_bs:.2f}% < {MIN_AVG_BOOTSTRAP}%，被自举值筛选移除。", file=sys.stderr)
+                    if log_f_handle: log_f_handle.flush()
+            
+            print(f"平均自举值筛选 (>= {MIN_AVG_BOOTSTRAP}%): {count_before_filtering} -> {len(og_stats_filtered_bootstrap)}")
+            if log_f_handle: log_f_handle.flush()
+            og_stats_filtered = og_stats_filtered_bootstrap
+            count_before_filtering = len(og_stats_filtered) # 更新计数器，以防未来有更多筛选步骤
 
         final_ogs = og_stats_filtered
         print(f"最终保留 {len(final_ogs)} 个基因进行串联分析。")
