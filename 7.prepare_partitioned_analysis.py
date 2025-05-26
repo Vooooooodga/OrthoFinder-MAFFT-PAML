@@ -3,6 +3,31 @@ import re
 import sys
 from collections import defaultdict
 
+# --- 用户提供的基本物种名列表 ---
+BASE_SPECIES_NAMES = sorted([
+    "Acromyrmex_echinatior", "Apis_cerana", "Apis_dorsata", "Apis_florea",
+    "Apis_laboriosa", "Apis_mellifera", "Atta_cephalotes", "Atta_colombica",
+    "Bombus_affinis", "Bombus_bifarius", "Bombus_fervidus", "Bombus_flavifrons",
+    "Bombus_huntii", "Bombus_impatiens", "Bombus_pascuorum", "Bombus_pyrosoma",
+    "Bombus_terrestris", "Bombus_vancouverensis_nearcticus", "Bombus_vosnesenskii",
+    "Camponotus_floridanus", "Cardiocondyla_obscurior", "Cataglyphis_hispanica",
+    "Ceratina_calcarata", "Colletes_gigas", "Cyphomyrmex_costatus",
+    "Dinoponera_quadriceps", "Drosophila_melanogaster", "Dufourea_novaeangliae",
+    "Eufriesea_mexicana", "Formica_exsecta", "Frieseomelitta_varia",
+    "Habropoda_laboriosa", "Harpegnathos_saltator", "Hylaeus_anthracinus",
+    "Hylaeus_volcanicus", "Linepithema_humile", "Megachile_rotundata",
+    "Megalopta_genalis", "Monomorium_pharaonis", "Nomia_melanderi",
+    "Nylanderia_fulva", "Odontomachus_brunneus", "Ooceraea_biroi",
+    "Osmia_bicornis_bicornis", "Osmia_lignaria", "Pogonomyrmex_barbatus",
+    "Polistes_canadensis", "Polistes_dominula", "Polistes_fuscatus",
+    "Polyergus_mexicanus", "Prorops_nasuta", "Pseudomyrmex_gracilis",
+    "Solenopsis_invicta", "Temnothorax_curvispinosus",
+    "Temnothorax_longispinosus", "Temnothorax_nylanderi", "Trachymyrmex_cornetzi",
+    "Trachymyrmex_septentrionalis", "Trachymyrmex_zeteki", "Vespa_crabro",
+    "Vespa_mandarinia", "Vespa_velutina", "Vespula_pensylvanica",
+    "Vespula_vulgaris", "Vollenhovia_emeryi", "Wasmannia_auropunctata"
+], key=len, reverse=True) # 按长度降序排序，确保最长匹配优先
+
 # --- 筛选阈值 ---
 MIN_MSA_LEN = 200        # 最小比对长度 (AA)
 MAX_BIAS_RATIO = 0.10    # 成分检验失败的最大比例 (例如 0.10 = 10%)
@@ -160,45 +185,106 @@ def get_compositional_bias_stats(iqtree_file_path):
     print(f"警告: 未能从 {iqtree_file_path} 或 {log_file_path or 'N/A'} 提取成分偏好统计信息。", file=sys.stderr)
     return None, None # 最终的回退
 
+def get_species_name_from_header(header, base_species_list):
+    """
+    将FASTA头部映射到预定义的基本物种名列表中的一个。
+    优先匹配列表中更长（更具体）的物种名。
+    如果找不到匹配，则打印警告并返回原始头部。
+    """
+    for species_name in base_species_list:
+        if header.startswith(species_name):
+            return species_name
+    print(f"警告: 序列头部 '{header}' 未能映射到任何预定义的BASE_SPECIES_NAMES。将使用原始头部。", file=sys.stderr)
+    # 可以在此处添加flush，如果日志句柄在作用域内的话
+    # if log_f_handle and hasattr(log_f_handle, 'flush'): log_f_handle.flush()
+    return header # 或返回 None 并让调用者处理
+
 def read_fasta(fasta_file_path):
     """
-    读取 FASTA 文件并返回 {header: sequence} 字典、
-    第一个序列的长度以及按出现顺序排列的头列表。
+    读取 FASTA 文件并返回 {species_name: sequence} 字典、
+    第一个序列的长度以及按出现顺序排列的映射后物种名列表。
+    如果多个头部映射到同一物种名，则后出现的序列会覆盖先出现的。
     """
     sequences = {}
-    ordered_headers = []
+    ordered_species_names = [] # 存储映射后的物种名
     seq_len = 0
+    header_count = 0 # 用于跟踪原始头部数量
+    mapped_species_in_file = set() # 跟踪此文件中已映射的物种名
+
     try:
         with open(fasta_file_path, 'r') as f:
-            header = None
-            current_seq = []
-            first_seq_done = False
+            original_header = None
+            current_seq_parts = []
+            first_seq_processed = False
+
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 if line.startswith(">"):
-                    if header:
-                        sequences[header] = "".join(current_seq)
-                        if not first_seq_done:
-                            seq_len = len(sequences[header])
-                            first_seq_done = True
-                    header = line[1:]
-                    ordered_headers.append(header)
-                    current_seq = []
+                    header_count += 1
+                    if original_header:
+                        # 处理上一个序列
+                        species_name = get_species_name_from_header(original_header, BASE_SPECIES_NAMES)
+                        current_seq_str = "".join(current_seq_parts)
+                        
+                        if species_name in sequences and species_name in mapped_species_in_file:
+                            # 如果在同一个文件中，同一个物种名已经从不同的原始头部映射过来并被赋值过
+                            # 这意味着一个物种在这个OG的MSA中有多个序列条目
+                            print(f"警告: 在文件 {fasta_file_path} 中，物种名 '{species_name}' (来自原始头部 '{original_header}') 多次出现。将使用最后出现的序列。原有长度: {len(sequences[species_name])}, 新长度: {len(current_seq_str)}", file=sys.stderr)
+                            # if log_f_handle: log_f_handle.flush() # 如果log_f_handle在此作用域
+                        
+                        sequences[species_name] = current_seq_str
+                        if not first_seq_processed:
+                            seq_len = len(current_seq_str)
+                            first_seq_processed = True
+                        
+                        if species_name not in mapped_species_in_file:
+                            ordered_species_names.append(species_name)
+                            mapped_species_in_file.add(species_name)
+                        elif species_name not in ordered_species_names: # 物种已映射但未在ordered_species_names，理论不应发生
+                             ordered_species_names.append(species_name) 
+
+                    original_header = line[1:] # 新的原始头部
+                    current_seq_parts = []
                 else:
-                    current_seq.append(line)
-            if header:
-                sequences[header] = "".join(current_seq)
-                if not first_seq_done:
-                    seq_len = len(sequences[header])
+                    current_seq_parts.append(line)
+            
+            # 处理文件中的最后一个序列
+            if original_header:
+                species_name = get_species_name_from_header(original_header, BASE_SPECIES_NAMES)
+                current_seq_str = "".join(current_seq_parts)
+
+                if species_name in sequences and species_name in mapped_species_in_file:
+                     print(f"警告: 在文件 {fasta_file_path} 中，物种名 '{species_name}' (来自原始头部 '{original_header}') 多次出现 (文件末尾)。将使用最后出现的序列。原有长度: {len(sequences[species_name])}, 新长度: {len(current_seq_str)}", file=sys.stderr)
+                     # if log_f_handle: log_f_handle.flush()
+
+                sequences[species_name] = current_seq_str
+                if not first_seq_processed:
+                    seq_len = len(current_seq_str)
+                    # first_seq_processed = True # 不需要，因为这是文件末尾
+
+                if species_name not in mapped_species_in_file:
+                    ordered_species_names.append(species_name)
+                    # mapped_species_in_file.add(species_name) # 不需要，这是文件末尾
+                elif species_name not in ordered_species_names:
+                     ordered_species_names.append(species_name) 
+
+        if header_count == 0 and not sequences: # 文件可能是空的或非FASTA
+            print(f"警告: FASTA 文件 {fasta_file_path} 为空或不含序列。", file=sys.stderr)
+            # if log_f_handle: log_f_handle.flush()
+            return None, 0, []
+
     except FileNotFoundError:
         print(f"警告: FASTA 文件未找到: {fasta_file_path}", file=sys.stderr)
-        return None, 0, None
+        # if log_f_handle: log_f_handle.flush()
+        return None, 0, []
     except Exception as e:
         print(f"警告: 读取 FASTA 文件 '{fasta_file_path}' 时出错: {e}", file=sys.stderr)
-        return None, 0, None
-    return sequences, seq_len, ordered_headers
+        # if log_f_handle: log_f_handle.flush()
+        return None, 0, []
+    
+    return sequences, seq_len, ordered_species_names
 
 def get_percentile(data, percentile_val):
     """计算给定数据的百分位数（线性插值法）。"""
