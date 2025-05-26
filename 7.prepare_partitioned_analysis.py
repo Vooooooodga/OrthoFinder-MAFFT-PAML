@@ -35,7 +35,7 @@ def get_tree_length_from_iqtree_log(iqtree_file_path):
         with open(iqtree_file_path, 'r') as f:
             for line in f:
                 # 修改: 使用正则表达式以适应更灵活的格式
-                match = re.search(r"Total tree length.*:\\s*(\\d+\\.?\\d*)", line)
+                match = re.search(r"Total tree length \(sum of branch lengths\):\s*(\d+\.?\d*)", line)
                 if match:
                     try:
                         length = float(match.group(1)) # 从匹配组中提取长度
