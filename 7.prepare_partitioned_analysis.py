@@ -52,27 +52,91 @@ def get_tree_length_from_iqtree_log(iqtree_file_path):
 
 def get_compositional_bias_stats(iqtree_file_path):
     """
-    解析 IQ-TREE 日志文件以找到成分检验失败的序列数。
-    查找 "NUMBER OF SEQUENCES FAILED:" 行。
+    解析 IQ-TREE 日志文件 (.iqtree 或 .log) 以找到成分检验失败的序列数。
+    首先尝试从 .iqtree 文件中获取总序列数。
+    然后尝试在 .iqtree 文件中寻找 "NUMBER OF SEQUENCES FAILED: X / Y" 模式。
+    如果未找到，则尝试从对应的 .log 文件中寻找 "N sequences failed composition chi2 test" 模式。
     返回一个元组 (failed_count, total_count) 或 (None, None)。
     """
+    total_sequences_from_iqtree = None
+    # 步骤 1: 尝试从 .iqtree 文件中读取总序列数
     try:
-        with open(iqtree_file_path, 'r') as f:
-            for line in f:
+        with open(iqtree_file_path, 'r') as f_iqtree_for_total:
+            for line in f_iqtree_for_total:
+                match_total_seq = re.search(r"Input data:\\s*(\\d+)\\s*sequences", line)
+                if match_total_seq:
+                    total_sequences_from_iqtree = int(match_total_seq.group(1))
+                    break # 找到了总序列数
+    except FileNotFoundError:
+        print(f"警告: 主要 IQ-TREE 文件未找到，无法获取总序列数: {iqtree_file_path}", file=sys.stderr)
+        return None, None
+    except Exception as e:
+        print(f"警告: 读取主要 IQ-TREE 文件 '{iqtree_file_path}' 以获取总序列数时出错: {e}", file=sys.stderr)
+        return None, None
+
+    if total_sequences_from_iqtree is None:
+        print(f"警告: 未能在 {iqtree_file_path} 中找到总序列数 (应为 'Input data: ... sequences' 行)。", file=sys.stderr)
+        return None, None
+
+    # 步骤 2: 尝试在 .iqtree 文件中寻找主要模式
+    try:
+        with open(iqtree_file_path, 'r') as f_iqtree:
+            for line in f_iqtree:
                 if "NUMBER OF SEQUENCES FAILED:" in line:
-                    match = re.search(r'(\d+)\s*/\s*(\d+)', line)
+                    match = re.search(r'(\\d+)\\s*/\\s*(\\d+)', line)
                     if match:
                         failed = int(match.group(1))
                         total = int(match.group(2))
+                        if total != total_sequences_from_iqtree:
+                             print(f"警告: {iqtree_file_path} 中成分检验的总序列数 ({total}) 与从 'Input data' 行解析的总序列数 ({total_sequences_from_iqtree}) 不符。将使用前者。", file=sys.stderr)
                         return failed, total
                     else:
-                        print(f"警告: 找到了失败行但无法解析: '{line.strip()}' 于 {iqtree_file_path}", file=sys.stderr)
-                        return None, None
-        # 如果未找到该行
-        print(f"警告: 未在 {iqtree_file_path} 中找到 'NUMBER OF SEQUENCES FAILED' 行。", file=sys.stderr)
+                        print(f"警告: 在 {iqtree_file_path} 中找到了 'NUMBER OF SEQUENCES FAILED:' 行但无法解析: '{line.strip()}'", file=sys.stderr)
+                        return None, None # 主要模式行找到但解析失败
+            # 如果循环完成，说明在 .iqtree 文件中未找到主要模式，将继续尝试 .log 文件
+    except FileNotFoundError:
+        # 此处理论上不会触发，因为前面已经尝试打开过一次
+        print(f"警告: IQ-TREE iqtree 文件在第二次尝试打开时未找到: {iqtree_file_path}", file=sys.stderr)
         return None, None
     except Exception as e:
-        print(f"警告: 解析 IQ-TREE 日志文件 '{iqtree_file_path}' 时出错 (Bias): {e}", file=sys.stderr)
+        print(f"警告: 解析 IQ-TREE iqtree 文件 '{iqtree_file_path}' 寻找主要偏好模式时出错: {e}", file=sys.stderr)
+        # 出错则不继续，因为主要文件解析失败
+
+    # 步骤 3: 如果主要模式未找到，尝试 .log 文件中的备用模式
+    # 从 "OG000xxxx.clipkit.iqtree" 推断 "OG000xxxx.clipkit.log"
+    if not iqtree_file_path.endswith(".clipkit.iqtree"):
+        print(f"警告: IQ-TREE 文件名 '{iqtree_file_path}' 格式非预期，无法安全推断 .log 文件路径。", file=sys.stderr)
+        print(f"警告: 未在 {iqtree_file_path} 中找到 'NUMBER OF SEQUENCES FAILED' 行。", file=sys.stderr) # 原始的未找到行消息
+        return None, None
+
+    base_name = iqtree_file_path[:-len(".clipkit.iqtree")]
+    log_file_path = base_name + ".clipkit.log"
+
+    if not os.path.exists(log_file_path):
+        print(f"警告: 未在 {iqtree_file_path} 中找到 'NUMBER OF SEQUENCES FAILED' 行，且对应的 .log 文件 {log_file_path} 亦不存在。", file=sys.stderr)
+        return None, None
+
+    try:
+        with open(log_file_path, 'r') as f_log:
+            for line_log in f_log:
+                match_log_failed = re.search(r"(\\d+)\\s*sequences failed composition chi2 test", line_log)
+                if match_log_failed:
+                    failed_count_log = int(match_log_failed.group(1))
+                    # 使用从 .iqtree 文件获取的总序列数
+                    print(f"信息: 在 {log_file_path} 中找到备用成分偏好格式。失败数: {failed_count_log}, 总序列数: {total_sequences_from_iqtree}", file=sys.stderr)
+                    return failed_count_log, total_sequences_from_iqtree
+        # 如果 .log 文件中也未找到备用模式
+        print(f"警告: 未在 {iqtree_file_path} 中找到 'NUMBER OF SEQUENCES FAILED' 行，且在 {log_file_path} 中也未找到备用模式。", file=sys.stderr)
+        return None, None
+    except FileNotFoundError: # 虽然 os.path.exists 已检查，但作为保障
+        print(f"警告: 对应的 .log 文件 {log_file_path} 未找到 (备用路径尝试失败)。", file=sys.stderr)
+        return None, None
+    except Exception as e:
+        print(f"警告: 解析 IQ-TREE .log 文件 '{log_file_path}' 时出错: {e}", file=sys.stderr)
+        return None, None
+
+    # 此处逻辑上不应到达，若到达则表示前面判断有遗漏
+    print(f"警告: 未能从 {iqtree_file_path} 或 {log_file_path} 提取成分偏好统计信息。", file=sys.stderr)
     return None, None
 
 def read_fasta(fasta_file_path):
