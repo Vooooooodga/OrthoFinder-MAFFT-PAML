@@ -4,10 +4,10 @@ import sys
 from collections import defaultdict
 
 # --- 筛选阈值 ---
-MIN_MSA_LEN = 100        # 最小比对长度 (AA)
-MAX_BIAS_RATIO = 0.20    # 成分检验失败的最大比例 (例如 0.20 = 20%)
-LOW_RATE_PERCENTILE = 5  # 要移除的最慢进化速率的百分比
-HIGH_RATE_PERCENTILE = 95 # 要移除的最快进化速率的百分比
+MIN_MSA_LEN = 200        # 最小比对长度 (AA)
+MAX_BIAS_RATIO = 0.10    # 成分检验失败的最大比例 (例如 0.10 = 10%)
+LOW_RATE_PERCENTILE = 10  # 要移除的最慢进化速率的百分比
+HIGH_RATE_PERCENTILE = 90 # 要移除的最快进化速率的百分比
 # --------------------
 
 def get_best_model_from_iqtree_log(iqtree_file_path):
