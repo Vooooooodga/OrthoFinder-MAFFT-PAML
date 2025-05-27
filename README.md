@@ -3,6 +3,7 @@
 本项目包含一系列用于直系同源基因分析的脚本，从候选基因列表开始，到最终生成比对后的蛋白质序列和转换的codon序列。
 
 ## 目录
+1.  [run_OrthoFInder_for_66_species.sh]
 1.  [1.Search_for_OG_for_candidate_genes.py](#1search_for_og_for_candidate_genespy)
 2.  [2.Filter_SingleCopyOrthoGroups.py](#2filter_singlecopyorthogroupspy)
 3.  [3.Extract_longest_cds_for_SCOG.py](#3extract_longest_cds_for_scogpy)
