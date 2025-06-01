@@ -5,86 +5,44 @@ from Bio.Seq import Seq
 
 STOP_CODONS_LIST = ["TAA", "TAG", "TGA"]
 
-def replace_internal_stop_codons(sequence_str):
+def replace_all_stop_codons_with_nnn(sequence_str):
     """
     Iterates through the sequence codon by codon.
-    If an internal stop codon (TAA, TAG, TGA, case-insensitive) is found,
-    it's replaced with "NNN". Trailing stop codons are NOT modified.
+    Replaces ALL stop codons (TAA, TAG, TGA, case-insensitive) with "NNN",
+    regardless of their position.
     """
     seq_upper = sequence_str.upper()
     original_chars = list(sequence_str)
     seq_len = len(seq_upper)
     
-    # Determine the end index for the loop to cover only full codons
-    # This also helps identify the start index of the last potential full codon
     last_codon_loop_end = seq_len - (seq_len % 3)
 
     for i in range(0, last_codon_loop_end, 3):
         codon = seq_upper[i:i+3]
         if codon in STOP_CODONS_LIST:
-            # Check if this stop codon is the last complete codon in the sequence
-            is_trailing_stop_codon = (i + 3 == last_codon_loop_end)
-            
-            if not is_trailing_stop_codon:
-                # It's an internal stop codon, so replace it
-                original_chars[i] = 'N'
-                original_chars[i+1] = 'N'
-                original_chars[i+2] = 'N'
-            # If it is_trailing_stop_codon, do nothing
+            original_chars[i] = 'N'
+            original_chars[i+1] = 'N'
+            original_chars[i+2] = 'N'
             
     return "".join(original_chars)
 
 def process_fasta_file(input_file_path, output_file_path):
     """
-    Reads a FASTA MSA file.
-    1. If any sequence has a trailing stop codon, removes the last 3 bases from ALL sequences.
-    2. Then, for each (potentially truncated) sequence, replaces internal stop codons 
-       (TAA, TAG, TGA) with 'NNN'. Stop codons at the new end are preserved.
-    Writes the modified sequences to a new FASTA file.
+    Reads a FASTA file, replaces ALL stop codons (TAA, TAG, TGA)
+    with 'NNN' in each sequence, regardless of their position,
+    and writes the modified sequences to a new FASTA file.
     """
+    records_to_write = []
     try:
-        records = list(SeqIO.parse(input_file_path, "fasta"))
-        if not records:
-            SeqIO.write([], output_file_path, "fasta") # Write empty file if input is empty
-            return True
-
-        truncate_alignment_end = False
-
-        # Check if alignment-wide truncation is needed
-        for record in records:
-            seq_str_upper = str(record.seq).upper()
-            seq_len = len(seq_str_upper)
-            # Check if the sequence is long enough for a codon and ends with a complete codon
-            if seq_len >= 3 and seq_len % 3 == 0:
-                last_codon = seq_str_upper[seq_len-3 : seq_len]
-                if last_codon in STOP_CODONS_LIST:
-                    truncate_alignment_end = True
-                    break
-        
-        modified_records_to_write = []
-        for record in records:
+        for record in SeqIO.parse(input_file_path, "fasta"):
             original_seq_str = str(record.seq)
+            modified_seq_str = replace_all_stop_codons_with_nnn(original_seq_str)
             
-            # Step 1: Apply alignment-wide truncation if needed
-            sequence_after_truncation = original_seq_str
-            if truncate_alignment_end:
-                if len(original_seq_str) >= 3:
-                    sequence_after_truncation = original_seq_str[:-3]
-                else:
-                    sequence_after_truncation = "" # Sequence becomes empty or too short
-            
-            # Step 2: Replace internal stop codons in the (potentially truncated) sequence
-            # The existing replace_internal_stop_codons function is suitable here,
-            # as its "trailing" logic will apply to the `sequence_after_truncation`.
-            final_modified_seq_str = replace_internal_stop_codons(sequence_after_truncation)
-            
-            # Create a new record with the modified sequence
             modified_record = record[:] 
-            modified_record.seq = Seq(final_modified_seq_str)
-            modified_records_to_write.append(modified_record)
+            modified_record.seq = Seq(modified_seq_str)
+            records_to_write.append(modified_record)
         
-        SeqIO.write(modified_records_to_write, output_file_path, "fasta")
-        # print(f"Processed: {input_file_path} -> {output_file_path}")
+        SeqIO.write(records_to_write, output_file_path, "fasta")
         return True
     except Exception as e:
         print(f"Error processing file {input_file_path}: {e}")
@@ -92,7 +50,10 @@ def process_fasta_file(input_file_path, output_file_path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Processes FASTA multiple sequence alignments (codon alignments). If any sequence has a trailing stop codon (TAA, TAG, TGA), the last codon (3 bases) is removed from ALL sequences in that file. Subsequently, any internal stop codons within the (potentially truncated) sequences are replaced with 'NNN'. Stop codons at the new end of sequences are preserved.",
+        description=(
+            "Replaces all stop codons (TAA, TAG, TGA) with 'NNN' in FASTA sequences, "
+            "regardless of their position. Operates on codon alignments."
+        ),
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
