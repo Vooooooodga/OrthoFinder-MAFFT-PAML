@@ -47,6 +47,16 @@ def main():
             # else: # Handle cases where a row might be shorter than expected, though TSV should be consistent
             #     print(f"Warning: Row for orthogroup {orthogroup} is shorter than expected and does not contain species column {args.species}")
 
+    # 打印在基因列表但未在Orthogroups文件中找到的基因
+    genes_not_found_in_orthogroups = gene_list - set(gene_to_orthogroup.keys())
+    if genes_not_found_in_orthogroups:
+        print(f"\n警告：以下基因存在于基因列表 '{args.gene_list_file}' 但在物种 '{args.species}' 的直系同源组文件 '{args.orthogroups_file}' 中未找到：")
+        for gene_id in genes_not_found_in_orthogroups:
+            print(f"- {gene_id}")
+    else:
+        print(f"\n信息：基因列表 '{args.gene_list_file}' 中的所有基因均在物种 '{args.species}' 的直系同源组文件 '{args.orthogroups_file}' 中成功找到对应的直系同源组。")
+    print() # 为后续消息提供更好的视觉分隔
+
     # Confirm found Orthogroups
     if not gene_to_orthogroup:
         print(f"No genes from the list found for species '{args.species}' in {args.orthogroups_file}.")
