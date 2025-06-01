@@ -3,34 +3,48 @@ import argparse
 from Bio import SeqIO
 from Bio.Seq import Seq
 
-def remove_trailing_stop_codon(sequence_str):
+def replace_internal_stop_codons(sequence_str):
     """
-    Checks if the trailing codon is a stop codon and removes it.
-    Standard stop codons: TAA, TAG, TGA.
+    Iterates through the sequence codon by codon.
+    If an internal stop codon (TAA, TAG, TGA, case-insensitive) is found,
+    it's replaced with "NNN". Trailing stop codons are NOT modified.
     """
     stop_codons = ["TAA", "TAG", "TGA"]
-    seq_len = len(sequence_str)
+    seq_upper = sequence_str.upper()
+    original_chars = list(sequence_str)
+    seq_len = len(seq_upper)
+    
+    # Determine the end index for the loop to cover only full codons
+    # This also helps identify the start index of the last potential full codon
+    last_codon_loop_end = seq_len - (seq_len % 3)
 
-    if seq_len >= 3:
-        last_codon = sequence_str[-3:].upper()
-        if last_codon in stop_codons:
-            return sequence_str[:-3]
-    return sequence_str
+    for i in range(0, last_codon_loop_end, 3):
+        codon = seq_upper[i:i+3]
+        if codon in stop_codons:
+            # Check if this stop codon is the last complete codon in the sequence
+            is_trailing_stop_codon = (i + 3 == last_codon_loop_end)
+            
+            if not is_trailing_stop_codon:
+                # It's an internal stop codon, so replace it
+                original_chars[i] = 'N'
+                original_chars[i+1] = 'N'
+                original_chars[i+2] = 'N'
+            # If it is_trailing_stop_codon, do nothing
+            
+    return "".join(original_chars)
 
 def process_fasta_file(input_file_path, output_file_path):
     """
-    Reads a FASTA file, removes trailing stop codons from each sequence,
-    and writes the modified sequences to a new FASTA file.
+    Reads a FASTA file, replaces internal stop codons (excluding trailing ones)
+    with 'NNN' in each sequence, and writes the modified sequences to a new FASTA file.
     """
     records_to_write = []
     try:
         for record in SeqIO.parse(input_file_path, "fasta"):
             original_seq_str = str(record.seq)
-            modified_seq_str = remove_trailing_stop_codon(original_seq_str)
+            modified_seq_str = replace_internal_stop_codons(original_seq_str)
             
-            # Create a new SeqRecord with the modified sequence
-            # Retain the original ID and description
-            modified_record = record[:] # Create a shallow copy to modify sequence
+            modified_record = record[:] 
             modified_record.seq = Seq(modified_seq_str)
             records_to_write.append(modified_record)
         
@@ -43,7 +57,7 @@ def process_fasta_file(input_file_path, output_file_path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Removes trailing stop codons (TAA, TAG, TGA) from sequences in FASTA files.",
+        description="Replaces internal stop codons (TAA, TAG, TGA) with 'NNN' in FASTA sequences, checking codon by codon. Trailing stop codons are preserved.",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
