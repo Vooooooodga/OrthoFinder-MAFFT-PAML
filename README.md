@@ -5,12 +5,11 @@
 ## 目录
 1.  [run_OrthoFInder_for_66_species.sh]
 1.  [1.Search_for_OG_for_candidate_genes.py](#1search_for_og_for_candidate_genespy)
-2.  [2.Filter_SingleCopyOrthoGroups.py](#2filter_singlecopyorthogroupspy)
-3.  [3.Extract_longest_cds_for_SCOG.py](#3extract_longest_cds_for_scogpy)
-4.  [4.Translate_cds_to_protein.py](#4translate_cds_to_proteinpy)
-5.  [5.run_MAFFT_for_aa_msa.sh](#5run_mafft_for_aa_msash)
-6.  [pal2nal.pl](#pal2nalpl)
-7.  [run_pal2nal.sh](#run_pal2nalsh)
+2.  [2. 4_filter_OGs_by_coverage_extract_CDS.py](#2-4_filter_ogs_by_coverage_extract_cdspy)
+3.  [3.Translate_cds_to_protein.py](#3translate_cds_to_proteinpy)
+4.  [4.run_MAFFT_for_aa_msa.sh](#4run_mafft_for_aa_msash)
+5.  [5.pal2nal.pl](#5pal2nalpl)
+6.  [6.run_pal2nal.sh](#6run_pal2nalsh)
 
 ---
 
@@ -41,63 +40,49 @@
 
 ---
 
-## 2.Filter_SingleCopyOrthoGroups.py
+## 3.2._filter_OGs_by_coverage_extract_CDS.py
 
 **功能**:
-此脚本筛选上一步选出的 MSA 文件，仅保留那些对应于单拷贝直系同源组 (Single-Copy Orthogroups) 的文件。
+此脚本用于筛选直系同源组 (Orthogroups) 并提取编码序列 (CDS)。它首先根据用户定义的单拷贝物种覆盖率阈值来筛选在脚本1输出中的 Orthogroups。具体步骤如下：
+1.  从 `Orthogroups.tsv` 文件中读取每个 Orthogroup 在各个物种中的基因信息。
+2.  排除用户通过 `--excluded_species` 指定的物种 (例如，果蝇)。
+3.  基于剩余的物种，计算每个 Orthogroup 中拥有单拷贝基因的物种所占的百分比。
+4.  如果此百分比超过 `--single_copy_threshold_percentage` (默认为 70%)，则该 Orthogroup 被视为合格。
+5.  对于合格的 Orthogroup，脚本仅保留那些具有单拷贝基因的物种中的基因 (即，如果一个物种在该 Orthogroup 中有多个基因，则这些基因不会被用于提取 CDS)。
+6.  最后，为这些筛选出的单拷贝基因提取最长的 CDS 序列。
+此脚本有效地取代了旧流程中 `2.Filter_SingleCopyOrthoGroups.py` 和 `3.Extract_longest_cds_for_SCOG.py` 的组合功能，提供了一种基于覆盖率的更精细筛选方法。
 
 **参数**:
-*   `--single_copy_orthogroups_file`: 列出单拷贝直系同源组 ID 的文本文件路径 (通常是 OrthoFinder 结果中的 `Orthogroups_SingleCopyOrthologues.txt`)。
-    *   默认值: `/home/yuhangjia/data/AlternativeSplicing/exon_expansion_test/orthofinder/output_msa_2/Results_Jul05/Orthogroups/Orthogroups_SingleCopyOrthologues.txt`
-*   `--selected_msa_files_dir`: 包含由 `1.Search_for_OG_for_candidate_genes.py` 筛选出的 MSA 文件的目录路径。
-    *   默认值: `./selected_msa_files_deg`
-*   `--output_dir`: 保存筛选出的单拷贝 MSA 文件的目录路径。
-    *   默认值: `single_copy_selected_msa_files_deg`
-
-**输入**:
-*   一个文本文件，每行包含一个单拷贝直系同源组的 ID。
-*   一个包含 MSA 文件的目录 (脚本1的输出)。
-
-**输出**:
-*   在指定的输出目录 (`--output_dir`) 下，生成一个仅包含单拷贝直系同源组的 MSA 文件副本。
-
----
-
-## 3.Extract_longest_cds_for_SCOG.py
-
-**功能**:
-此脚本为筛选出的单拷贝直系同源组中的每个基因，从提供的核酸序列数据库中提取最长的编码序列 (CDS)。
-
-**参数**:
-*   `--protein_msa_dir`: 包含单拷贝蛋白质 MSA 文件的目录路径 (脚本2的输出)。
-    *   默认值: `single_copy_selected_msa_files_deg`
-*   `--nucleotide_db_dir`: 包含核酸序列 (CDS) FASTA 文件的目录路径。此目录应每个物种一个 FASTA 文件，文件名即物种名 (例如 `SpeciesA.fasta`)，FASTA 文件中的序列头部应包含基因标识符。
-    *   默认值: `../longest_cds`
+*   `--orthogroups_file`: OrthoFinder 输出的 `Orthogroups.tsv` 文件路径。(必需)
+*   `--msa_dir_from_script1`: 包含由 `1.Search_for_OG_for_candidate_genes.py` 筛选出的 MSA 文件的目录路径 (例如, `selected_msa_files_deg`)。(必需)
+*   `--nucleotide_db_dir`: 包含各物种的核酸序列 (CDS) FASTA 文件的目录路径。每个物种一个文件，文件名即物种名 (例如 `Apis_mellifera.cds.fa`)，FASTA 文件中的序列头部应为 `>gene_id`。(必需)
 *   `--output_dir`: 保存提取出的 CDS 序列的目录路径。
-    *   默认值: `cds_sequences_deg`
-*   `--subspecies_included`: 一个或多个包含亚种名称的物种全名列表，用于正确解析基因 ID。
+    *   默认值: `cds_filtered_by_coverage`
+*   `--excluded_species`: 在计算覆盖率和提取 CDS 时需要排除的物种列表 (名称需与 `Orthogroups.tsv` 文件头中的一致)。
+    *   默认值: `['Drosophila_melanogaster']` (以空格分隔的列表)
+*   `--single_copy_threshold_percentage`: 单拷贝物种覆盖率的最小百分比阈值。
+    *   默认值: `70.0`
+*   `--subspecies_included`: 一个或多个包含亚种名称的物种全名列表，用于正确解析 MSA 文件头中的基因 ID。
     *   默认值: `['Bombus_vancouverensis_nearcticus', 'Osmia_bicornis_bicornis']` (以空格分隔的列表)
 
 **输入**:
-*   一个包含单拷贝蛋白质 MSA 文件的目录 (FASTA 格式)。
+*   OrthoFinder 生成的 `Orthogroups.tsv` 文件。
+*   一个包含 MSA 文件的目录 (脚本1的输出，例如 `selected_msa_files_deg`)。
 *   一个包含每个物种的 CDS 序列的目录 (FASTA 格式)。
 
 **输出**:
-*   在指定的输出目录 (`--output_dir`) 下，为每个输入的 MSA 文件生成一个对应的 CDS 序列 FASTA 文件。文件名格式为 `[orthogroup_id]_cds.fa`。
-
-**注意事项**:
-*   ⚠️ OrthoFinder 在处理基因名时，可能会将原始基因名中的括号 `()` 替换为下划线 `_`。此脚本在直接查找基因ID失败后，会尝试将核酸数据库中的基因ID（假设其包含括号）中的括号转换成下划线，并再次与MSA文件中的基因ID进行匹配，以提高找到对应CDS序列的成功率。
+*   在指定的输出目录 (`--output_dir`) 下，为每个通过筛选的 Orthogroup 生成一个对应的 CDS 序列 FASTA 文件。文件名格式为 `[orthogroup_id]_cds.fa`。这些文件仅包含在合格 Orthogroup 中具有单拷贝基因的物种的最长 CDS。
 
 ---
 
-## 4.Translate_cds_to_protein.py
+## 3.Translate_cds_to_protein.py
 
 **功能**:
 此脚本将提取出的 CDS 序列翻译成蛋白质序列。
 
 **参数**:
-*   `--input_folder`: 包含 CDS FASTA 文件的目录路径 (脚本3的输出)。
-    *   默认值: `cds_sequences_deg`
+*   `--input_folder`: 包含 CDS FASTA 文件的目录路径 (脚本2的输出)。
+    *   默认值: `cds_filtered_by_coverage`
 *   `--output_folder`: 保存翻译后的蛋白质 FASTA 文件的目录路径。
     *   默认值: `translated_proteins_deg`
 *   `--genetic_code`: 用于翻译的遗传密码表编号 (NCBI 定义)。
@@ -111,13 +96,13 @@
 
 ---
 
-## 5.run_MAFFT_for_aa_msa.sh
+## 4.run_MAFFT_for_aa_msa.sh
 
 **功能**:
 这是一个 Shell 脚本，使用 MAFFT 工具对翻译后的蛋白质序列进行多序列比对。
 
 **参数 (硬编码在脚本中)**:
-*   输入目录: `./translated_proteins_deg` (脚本4的输出)
+*   输入目录: `./translated_proteins_deg` (脚本3的输出)
 *   输出目录: `./aligned_translated_proteins_deg`
 *   MAFFT 使用的线程数: `64`
 *   MAFFT 执行路径: `/usr/local/biotools/m/mafft:7.525--h031d066_0` (通过 Singularity 执行)
@@ -130,7 +115,7 @@
 
 ---
 
-## pal2nal.pl
+## 5.pal2nal.pl
 
 **功能**:
 `pal2nal.pl` (版本 v14) 是一个 Perl 脚本，用于将蛋白质序列比对转换为相应的密码子比对。它能够处理 CLUSTAL 和 FASTA 格式的蛋白质比对，并接受一个或多个包含相应核酸序列的 FASTA 文件。
@@ -167,7 +152,7 @@ perl pal2nal.pl pep.aln nuc.fasta [nuc.fasta...] [options] > output_codon_alignm
 
 ---
 
-## run_pal2nal.sh
+## 6.run_pal2nal.sh
 
 **功能**:
 这是一个 Shell 脚本，用于批量使用 pal2nal.pl 将比对后的蛋白质序列和对应的 CDS 序列转换为密码子比对。脚本会自动查找蛋白质比对目录中的所有文件，并在 CDS 目录中寻找对应的核酸序列文件，然后调用 pal2nal.pl 进行转换。
@@ -178,8 +163,8 @@ perl pal2nal.pl pep.aln nuc.fasta [nuc.fasta...] [options] > output_codon_alignm
 ```
 
 **参数**:
-*   `<蛋白质比对目录>`: 包含比对后的蛋白质序列的目录路径（如 `aligned_translated_proteins_deg`）。
-*   `<CDS序列目录>`: 包含 CDS 序列的目录路径（如 `cds_sequences_deg`）。
+*   `<蛋白质比对目录>`: 包含比对后的蛋白质序列的目录路径（如 `aligned_translated_proteins_deg`，脚本4的输出）。
+*   `<CDS序列目录>`: 包含 CDS 序列的目录路径（如 `cds_filtered_by_coverage`，脚本2的输出）。
 *   `<输出目录>`: 保存生成的密码子比对文件的目录路径。
 *   `[密码子表编号]`: 可选参数，指定使用的密码子表编号（默认为 `1`，即标准通用密码子表）。
 *   `[-format <输出格式>]`: 可选参数，指定输出格式（默认为 `paml`）。可选值包括：`clustal`、`paml`、`fasta`、`codon`。
