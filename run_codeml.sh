@@ -10,9 +10,9 @@
 
 # 函数：显示用法信息
 usage() {
-  echo "用法: $0 -s <seq_aln_dir> -t <tree_file_path> -o <output_dir> -a <alt_ctl_template> -n <null_ctl_template>"
-  echo "  -s: 序列比对文件目录 (包含 *_maffted.fna 文件)"
-  echo "  -t: Newick 格式树文件的完整路径"
+  echo "用法: $0 -s <seq_aln_dir> -t <tree_file_dir> -o <output_dir> -a <alt_ctl_template> -n <null_ctl_template>"
+  echo "  -s: 序列比对文件目录 (包含 *_codon.clipkit.fasta 文件)"
+  echo "  -t: 树文件所在目录 (包含与序列文件对应的 *.treefile 文件)"
   echo "  -o: 输出目录 (用于存放生成的CTL文件和PAML结果)"
   echo "  -a: 备择模型CTL模板文件路径 (例如 bsA_alt.ctl)"
   echo "  -n: 零假设模型CTL模板文件路径 (例如 bsA_null.ctl)"
@@ -90,7 +90,7 @@ BASE_NAMES=(
 
 # 初始化变量
 SEQ_ALN_DIR=""
-TREE_FILE_PATH=""
+TREE_DIR_PATH=""
 OUTPUT_DIR=""
 ALT_CTL_TEMPLATE=""
 NULL_CTL_TEMPLATE=""
@@ -99,7 +99,7 @@ NULL_CTL_TEMPLATE=""
 while getopts ":s:t:o:a:n:" opt; do
   case $opt in
     s) SEQ_ALN_DIR="$OPTARG" ;;
-    t) TREE_FILE_PATH="$OPTARG" ;;
+    t) TREE_DIR_PATH="$OPTARG" ;;
     o) OUTPUT_DIR="$OPTARG" ;;
     a) ALT_CTL_TEMPLATE="$OPTARG" ;;
     n) NULL_CTL_TEMPLATE="$OPTARG" ;;
@@ -109,7 +109,7 @@ while getopts ":s:t:o:a:n:" opt; do
 done
 
 # 检查是否提供了所有必需参数
-if [ -z "$SEQ_ALN_DIR" ] || [ -z "$TREE_FILE_PATH" ] || [ -z "$OUTPUT_DIR" ] || [ -z "$ALT_CTL_TEMPLATE" ] || [ -z "$NULL_CTL_TEMPLATE" ]; then
+if [ -z "$SEQ_ALN_DIR" ] || [ -z "$TREE_DIR_PATH" ] || [ -z "$OUTPUT_DIR" ] || [ -z "$ALT_CTL_TEMPLATE" ] || [ -z "$NULL_CTL_TEMPLATE" ]; then
   echo "错误: 缺少一个或多个必需参数。"
   usage
 fi
@@ -119,8 +119,8 @@ if [ ! -d "$SEQ_ALN_DIR" ]; then
   echo "错误: 序列比对目录 '$SEQ_ALN_DIR' 未找到。"
   exit 1
 fi
-if [ ! -f "$TREE_FILE_PATH" ]; then
-  echo "错误: 树文件 '$TREE_FILE_PATH' 未找到。"
+if [ ! -d "$TREE_DIR_PATH" ]; then
+  echo "错误: 树文件目录 '$TREE_DIR_PATH' 未找到或不是一个目录。"
   exit 1
 fi
 if [ ! -f "$ALT_CTL_TEMPLATE" ]; then
@@ -159,15 +159,26 @@ if [ "$max_jobs" -lt 1 ]; then max_jobs=1; fi
 echo "最大并行PAML任务数: $max_jobs"
 
 # 处理目录中的每个序列比对文件
-for seq_file_path in "$SEQ_ALN_DIR"/*_maffted.fna; do
+for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
   if [ -f "$seq_file_path" ]; then
-    seq_file_basename=$(basename "$seq_file_path")
-    gene_name="${seq_file_basename%_maffted.fna}" # 获取基因名, 例如 OG0000000
+    seq_file_basename_full=$(basename "$seq_file_path")
+    # OG0001155_codon.clipkit.fasta -> OG0001155_codon.clipkit
+    og_base_name="${seq_file_basename_full%.fasta}"
+    # 将提取的基础名用作 PAML 输出和 CTL 文件的 "gene_name"
+    gene_name="$og_base_name"
+
+    # 构建对应的树文件路径
+    current_tree_file="$TREE_DIR_PATH/${og_base_name}.treefile"
+
+    if [ ! -f "$current_tree_file" ]; then
+      echo "警告: 序列文件 '$seq_file_path' 对应的树文件 '$current_tree_file' 未找到。跳过此序列。"
+      continue # 跳过当前序列文件
+    fi
 
     # 获取文件的绝对路径，确保codeml能找到它们
     # realpath可能需要coreutils包。如果系统没有，请确保路径正确或使用其他方法获取绝对路径。
     abs_seq_file_path=$(realpath "$seq_file_path")
-    abs_tree_file_path=$(realpath "$TREE_FILE_PATH")
+    abs_tree_file_path=$(realpath "$current_tree_file")
 
     # --- 备择模型 (Alternative Model) ---
     alt_ctl_filename="${gene_name}_alt.ctl"
