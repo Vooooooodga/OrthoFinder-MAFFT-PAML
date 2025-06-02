@@ -121,6 +121,10 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
         print(f"Warning: Could not parse tree {os.path.basename(tree_path)} with BioPython: {e}")
         return
 
+    # Remove bootstrap values from all clades before any other processing
+    for clade in tree.find_clades():
+        clade.confidence = None
+
     # Step 1: Map leaf gene IDs to species names and their sociality status.
     # leaf_social_info stores: {original_gene_id: {'species_name_for_output': str, 'is_target': bool}}
     leaf_social_info = {}
@@ -211,7 +215,7 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
     output_path = os.path.join(output_folder, output_filename)
 
     try:
-        Phylo.write(tree, output_path, "newick")
+        Phylo.write(tree, output_path, "newick") # Temporarily no format_branch_length
         # print(f"Saved marked tree to {output_path}")
     except Exception as e:
         print(f"Error writing marked tree {output_path} with BioPython: {e}")
