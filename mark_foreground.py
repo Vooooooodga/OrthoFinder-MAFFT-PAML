@@ -109,8 +109,20 @@ def _extract_species_key_from_gene_id(gene_id):
     
     return None # Return None if no match found in the hardcoded list
 
+def _format_branch_lengths_manually(clade, precision=10):
+    """Recursively formats branch lengths to strings with a given precision."""
+    if clade.branch_length is not None:
+        try:
+            # Ensure it's a float first for formatting, in case it was already a string from a previous run or bad format
+            branch_length_float = float(clade.branch_length)
+            clade.branch_length = f"{branch_length_float:.{precision}f}"
+        except (TypeError, ValueError):
+            # If conversion to float fails, just try to convert to string as a fallback
+            clade.branch_length = str(clade.branch_length)
+    for subclade in clade.clades:
+        _format_branch_lengths_manually(subclade, precision)
 
-def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_sociality_normalized, paml_marker, output_folder):
+def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_sociality_normalized, paml_marker, output_folder, branch_length_precision=10):
     """
     Loads a tree using BioPython, maps gene IDs to species, marks nodes based on descendant sociality,
     renames leaves to species names, and saves the modified tree.
@@ -122,8 +134,8 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
         return
 
     # Remove bootstrap values from all clades before any other processing
-    for clade in tree.find_clades():
-        clade.confidence = None
+    for item in tree.find_clades(): # Changed loop variable name to avoid conflict
+        item.confidence = None
 
     # Step 1: Map leaf gene IDs to species names and their sociality status.
     # leaf_social_info stores: {original_gene_id: {'species_name_for_output': str, 'is_target': bool}}
@@ -202,6 +214,15 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
         if not current_name.endswith(paml_marker): # Avoid double-marking
             clade_to_mark.name = current_name + paml_marker
 
+    # Attempt to manually format branch lengths AFTER all modifications
+    if tree.clade: # tree.clade is usually the root Clade object
+        _format_branch_lengths_manually(tree.clade, precision=branch_length_precision)
+    # else: # Fallback or alternative if tree.clade is not appropriate for some reason
+        # for starting_clade in tree.find_clades(): # This would re-traverse but ensure all parts are hit
+            # if starting_clade.is_terminal() and not starting_clade.clades: # only apply to root if tree is just one node?
+                 # _format_branch_lengths_manually(starting_clade, precision=branch_length_precision)
+            # break # often find_clades() starts with the root if no args
+
     # Step 5: Save the modified tree
     base_name = os.path.basename(tree_path)
     name_part, ext_part = os.path.splitext(base_name)
@@ -215,7 +236,8 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
     output_path = os.path.join(output_folder, output_filename)
 
     try:
-        Phylo.write(tree, output_path, "newick", format_branch_length=str)
+        # Using Phylo.write without format_branch_length, hoping it respects pre-formatted strings
+        Phylo.write(tree, output_path, "newick") 
         # print(f"Saved marked tree to {output_path}")
     except Exception as e:
         print(f"Error writing marked tree {output_path} with BioPython: {e}")
@@ -230,6 +252,7 @@ def main():
     parser.add_argument("--output_folder", required=True, help="Folder where marked tree files will be saved.")
     parser.add_argument("--target_sociality", required=True, help="The sociality level to be marked as foreground (e.g., 'Advanced Eusocial').")
     parser.add_argument("--paml_marker", required=True, help="The PAML marker to append to foreground branches (e.g., '#1').")
+    parser.add_argument("--branch_length_precision", type=int, default=10, help="Number of decimal places for branch length precision (default: 10).")
 
     args = parser.parse_args()
 
@@ -319,7 +342,7 @@ def main():
             tree_files_found +=1
             tree_file_path = os.path.join(args.tree_folder, filename)
             print(f"Processing {filename}...")
-            _mark_tree_and_save_biopython(tree_file_path, normalized_sociality_map, target_sociality_normalized, args.paml_marker, args.output_folder)
+            _mark_tree_and_save_biopython(tree_file_path, normalized_sociality_map, target_sociality_normalized, args.paml_marker, args.output_folder, args.branch_length_precision)
             processed_count += 1
     
     if tree_files_found == 0:
