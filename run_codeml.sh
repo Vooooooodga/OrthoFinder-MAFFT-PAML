@@ -206,7 +206,8 @@ for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
 
     echo "正在为 $gene_name 启动PAML (备择模型)..."
     # 后台运行codeml，并重定向其标准输出和错误到日志文件
-    singularity exec -e /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$alt_ctl_path" > "$alt_codeml_log_path" 2>&1 &
+    # 添加 -B /lustre10:/lustre10 来将宿主机的 /lustre10 目录映射到容器内
+    singularity exec -e -B /lustre10:/lustre10 /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$alt_ctl_path" > "$alt_codeml_log_path" 2>&1 &
     job_count=$((job_count + 1))
     if [ "$job_count" -ge "$max_jobs" ]; then
         echo "达到最大并行任务数 ($max_jobs), 等待一个任务完成..."
@@ -228,7 +229,8 @@ for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
     echo "$current_null_ctl_content" > "$null_ctl_path"
 
     echo "正在为 $gene_name 启动PAML (零假设模型)..."
-    singularity exec -e /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$null_ctl_path" > "$null_codeml_log_path" 2>&1 &
+    # 添加 -B /lustre10:/lustre10 来将宿主机的 /lustre10 目录映射到容器内
+    singularity exec -e -B /lustre10:/lustre10 /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$null_ctl_path" > "$null_codeml_log_path" 2>&1 &
     job_count=$((job_count + 1))
     if [ "$job_count" -ge "$max_jobs" ]; then
         echo "达到最大并行任务数 ($max_jobs), 等待一个任务完成..."
