@@ -215,7 +215,7 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
     output_path = os.path.join(output_folder, output_filename)
 
     try:
-        Phylo.write(tree, output_path, "newick") # Temporarily no format_branch_length
+        Phylo.write(tree, output_path, "newick", format_branch_length=str)
         # print(f"Saved marked tree to {output_path}")
     except Exception as e:
         print(f"Error writing marked tree {output_path} with BioPython: {e}")
