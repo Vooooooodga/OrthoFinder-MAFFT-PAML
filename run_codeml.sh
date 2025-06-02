@@ -176,7 +176,7 @@ for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
     gene_name="$og_base_name"
 
     # 构建对应的树文件路径
-    current_tree_file="$TREE_DIR_PATH/${og_base_name}.treefile"
+    current_tree_file="$TREE_DIR_PATH/${og_base_name}_marked.treefile"
 
     if [ ! -f "$current_tree_file" ]; then
       echo "警告: 序列文件 '$seq_file_path' 对应的树文件 '$current_tree_file' 未找到。跳过此序列。"
