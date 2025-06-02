@@ -143,7 +143,7 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
             social_data = normalized_sociality_map.get(normalized_putative_species_key)
             
             if social_data:
-                species_name_for_output = social_data['original_name'] # Use the name from CSV for output
+                species_name_for_output = social_data['original_name'].replace(' ', '_') # Use the name from CSV for output, replacing spaces with underscores
                 if social_data['social_level_normalized'] == target_sociality_normalized:
                     is_target_leaf = True
                 # print(f"Info: Gene '{original_gene_id}' (key: '{normalized_putative_species_key}') mapped to species '{species_name_for_output}', sociality: {social_data['social_level_normalized']}, target: {target_sociality_normalized}, is_target_leaf: {is_target_leaf}")
