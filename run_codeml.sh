@@ -8,16 +8,17 @@
 #SBATCH --cpus-per-task=32               # 中文注释：为该任务请求CPU核心数，用于并行运行codeml
 #SBATCH --mem=128G                        # 中文注释：请求内存
 
-# 函数：显示用法信息
-usage() {
-  echo "用法: $0 -s <seq_aln_dir> -t <tree_file_dir> -o <output_dir> -a <alt_ctl_template> -n <null_ctl_template>"
-  echo "  -s: 序列比对文件目录 (包含 *_codon.clipkit.fasta 文件)"
-  echo "  -t: 树文件所在目录 (包含与序列文件对应的 *.treefile 文件)"
-  echo "  -o: 输出目录 (用于存放生成的CTL文件和PAML结果)"
-  echo "  -a: 备择模型CTL模板文件路径 (例如 bsA_alt.ctl)"
-  echo "  -n: 零假设模型CTL模板文件路径 (例如 bsA_null.ctl)"
-  exit 1
-}
+# 由于路径硬编码，不再需要 usage 函数和命令行参数解析
+# # 函数：显示用法信息
+# usage() {
+#   echo "用法: $0 -s <seq_aln_dir> -t <tree_file_dir> -o <output_dir> -a <alt_ctl_template> -n <null_ctl_template>"
+#   echo "  -s: 序列比对文件目录 (包含 *_codon.clipkit.fasta 文件)"
+#   echo "  -t: 树文件所在目录 (包含与序列文件对应的 *.treefile 文件)"
+#   echo "  -o: 输出目录 (用于存放生成的CTL文件和PAML结果)"
+#   echo "  -a: 备择模型CTL模板文件路径 (例如 bsA_alt.ctl)"
+#   echo "  -n: 零假设模型CTL模板文件路径 (例如 bsA_null.ctl)"
+#   exit 1
+# }
 
 BASE_NAMES=(
 "Acromyrmex_echinatior"
@@ -88,31 +89,38 @@ BASE_NAMES=(
 "Wasmannia_auropunctata"
 )
 
-# 初始化变量
-SEQ_ALN_DIR=""
-TREE_DIR_PATH=""
-OUTPUT_DIR=""
-ALT_CTL_TEMPLATE=""
-NULL_CTL_TEMPLATE=""
+# 硬编码路径变量
+SEQ_ALN_DIR="DAS_aligned_codon_clipkit"
+TREE_DIR_PATH="gene_trees_with_foreground"
+OUTPUT_DIR="bsA"
+ALT_CTL_TEMPLATE="bsA_alt.ctl"   # 假设 bsA_alt.ctl 在脚本执行的当前目录下
+NULL_CTL_TEMPLATE="bsA_null.ctl" # 假设 bsA_null.ctl 在脚本执行的当前目录下
 
-# 解析命令行参数
-while getopts ":s:t:o:a:n:" opt; do
-  case $opt in
-    s) SEQ_ALN_DIR="$OPTARG" ;;
-    t) TREE_DIR_PATH="$OPTARG" ;;
-    o) OUTPUT_DIR="$OPTARG" ;;
-    a) ALT_CTL_TEMPLATE="$OPTARG" ;;
-    n) NULL_CTL_TEMPLATE="$OPTARG" ;;
-    \?) echo "无效选项: -$OPTARG" >&2; usage ;;
-    :) echo "选项 -$OPTARG 需要一个参数." >&2; usage ;;
-  esac
-done
+echo "配置信息 (硬编码):"
+echo "  序列比对目录: $SEQ_ALN_DIR"
+echo "  树文件目录: $TREE_DIR_PATH"
+echo "  输出目录: $OUTPUT_DIR"
+echo "  备择模型CTL模板: $ALT_CTL_TEMPLATE"
+echo "  零假设模型CTL模板: $NULL_CTL_TEMPLATE"
 
-# 检查是否提供了所有必需参数
-if [ -z "$SEQ_ALN_DIR" ] || [ -z "$TREE_DIR_PATH" ] || [ -z "$OUTPUT_DIR" ] || [ -z "$ALT_CTL_TEMPLATE" ] || [ -z "$NULL_CTL_TEMPLATE" ]; then
-  echo "错误: 缺少一个或多个必需参数。"
-  usage
-fi
+# # 解析命令行参数 (已移除)
+# while getopts ":s:t:o:a:n:" opt; do
+#   case $opt in
+#     s) SEQ_ALN_DIR="$OPTARG" ;;
+#     t) TREE_DIR_PATH="$OPTARG" ;;
+#     o) OUTPUT_DIR="$OPTARG" ;;
+#     a) ALT_CTL_TEMPLATE="$OPTARG" ;;
+#     n) NULL_CTL_TEMPLATE="$OPTARG" ;;
+#     \?) echo "无效选项: -$OPTARG" >&2; usage ;;
+#     :) echo "选项 -$OPTARG 需要一个参数." >&2; usage ;;
+#   esac
+# done
+
+# # 检查是否提供了所有必需参数 (已移除，因为路径是硬编码的)
+# if [ -z "$SEQ_ALN_DIR" ] || [ -z "$TREE_DIR_PATH" ] || [ -z "$OUTPUT_DIR" ] || [ -z "$ALT_CTL_TEMPLATE" ] || [ -z "$NULL_CTL_TEMPLATE" ]; then
+#   echo "错误: 缺少一个或多个必需参数。"
+#   usage
+# fi
 
 # 检查输入文件/目录是否存在
 if [ ! -d "$SEQ_ALN_DIR" ]; then
@@ -124,17 +132,17 @@ if [ ! -d "$TREE_DIR_PATH" ]; then
   exit 1
 fi
 if [ ! -f "$ALT_CTL_TEMPLATE" ]; then
-  echo "错误: 备择模型CTL模板 '$ALT_CTL_TEMPLATE' 未找到。"
+  echo "错误: 备择模型CTL模板 '$ALT_CTL_TEMPLATE' 未找到。请确保它位于脚本执行的当前目录。"
   exit 1
 fi
 if [ ! -f "$NULL_CTL_TEMPLATE" ]; then
-  echo "错误: 零假设模型CTL模板 '$NULL_CTL_TEMPLATE' 未找到。"
+  echo "错误: 零假设模型CTL模板 '$NULL_CTL_TEMPLATE' 未找到。请确保它位于脚本执行的当前目录。"
   exit 1
 fi
 
 # 创建输出目录 (如果不存在)
 mkdir -p "$OUTPUT_DIR"
-echo "输出目录: $OUTPUT_DIR"
+echo "确保输出目录存在: $OUTPUT_DIR"
 
 # 加载CTL模板内容
 alt_ctl_template_content=$(cat "$ALT_CTL_TEMPLATE")
