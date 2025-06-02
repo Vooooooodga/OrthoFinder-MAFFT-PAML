@@ -184,12 +184,13 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
         if all_desc_leaf_are_target and (clade.is_terminal() or current_clade_descendant_leaves):
              nodes_to_be_marked.append(clade)
 
-    # Step 3: Rename ALL leaf nodes in the tree object to their species names.
+    # Step 3: Original leaf node names (gene IDs) are PRESERVED. Renaming to species names is SKIPPED.
+    # The original plan was to rename all leaf nodes to their species names.
     # This is done for all leaves, regardless of whether their branch is marked.
-    for leaf_node in tree.get_terminals():
-        original_gene_id = leaf_node.name 
-        if original_gene_id in leaf_social_info: # Check if we have mapping info for this gene ID
-            leaf_node.name = leaf_social_info[original_gene_id]['species_name_for_output']
+    # for leaf_node in tree.get_terminals():
+    #     original_gene_id = leaf_node.name 
+    #     if original_gene_id in leaf_social_info: # Check if we have mapping info for this gene ID
+    #         leaf_node.name = leaf_social_info[original_gene_id]['species_name_for_output']
         # If original_gene_id was not in leaf_social_info (e.g. unnamed leaf, or error in processing it),
         # its name remains as is (which might be the original gene ID or None).
 
