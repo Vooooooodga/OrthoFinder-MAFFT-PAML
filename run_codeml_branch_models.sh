@@ -8,6 +8,9 @@
 #SBATCH --cpus-per-task=16               # 中文注释：为该任务请求CPU核心数，用于并行运行codeml
 #SBATCH --mem=64G                        # 中文注释：请求内存
 
+# 定义项目基础路径
+PROJECT_BASE_PATH="/home/yuhangjia/data/AlternativeSplicing/9_overlap_DAS_evo_rate_analysis"
+
 # BASE_NAMES 数组 (如果需要，可以用于标记树等，当前脚本不直接使用它进行PAML运行)
 BASE_NAMES=(
 "Acromyrmex_echinatior"
@@ -78,17 +81,21 @@ BASE_NAMES=(
 "Wasmannia_auropunctata"
 )
 
-# 硬编码路径变量
-SEQ_ALN_DIR="DAS_aligned_codon_clipkit"
-TREE_DIR_PATH="gene_trees_with_foreground" # 包含 *_codon.clipkit_marked.treefile 文件
-OUTPUT_DIR="branch_model"      # 新的输出目录名
-M0_CTL_TEMPLATE="branch_M0.ctl"          # M0 模型CTL模板
-TWO_RATIO_CTL_TEMPLATE="branch_2ratio.ctl" # 2-ratio 模型CTL模板
+# 硬编码路径变量 (使用绝对路径)
+SEQ_ALN_DIR="$PROJECT_BASE_PATH/DAS_aligned_codon_clipkit"
+TREE_DIR_PATH="$PROJECT_BASE_PATH/gene_trees_with_foreground" # 包含 *_codon.clipkit_marked.treefile 文件
+OUTPUT_DIR_NAME="$PROJECT_BASE_PATH/branch_model"      # 输出目录的名称
+M0_CTL_TEMPLATE="$PROJECT_BASE_PATH/branch_M0.ctl"          # M0 模型CTL模板
+TWO_RATIO_CTL_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio.ctl" # 2-ratio 模型CTL模板
+
+# 获取输出目录的绝对路径 (实际上 OUTPUT_DIR_NAME 现在已经是绝对的了，但 realpath 仍然有用，例如解析符号链接或清理路径)
+ABS_OUTPUT_DIR=$(realpath "$OUTPUT_DIR_NAME")
 
 echo "配置信息 (硬编码):"
+echo "  项目基础路径: $PROJECT_BASE_PATH"
 echo "  序列比对目录: $SEQ_ALN_DIR"
 echo "  树文件目录: $TREE_DIR_PATH"
-echo "  输出目录: $OUTPUT_DIR"
+echo "  输出目录 (绝对): $ABS_OUTPUT_DIR"
 echo "  M0 模型CTL模板: $M0_CTL_TEMPLATE"
 echo "  2-ratio 模型CTL模板: $TWO_RATIO_CTL_TEMPLATE"
 
@@ -102,17 +109,17 @@ if [ ! -d "$TREE_DIR_PATH" ]; then
   exit 1
 fi
 if [ ! -f "$M0_CTL_TEMPLATE" ]; then
-  echo "错误: M0模型CTL模板 '$M0_CTL_TEMPLATE' 未找到。请确保它位于脚本执行的当前目录。"
+  echo "错误: M0模型CTL模板 '$M0_CTL_TEMPLATE' 未找到。"
   exit 1
 fi
 if [ ! -f "$TWO_RATIO_CTL_TEMPLATE" ]; then
-  echo "错误: 2-ratio模型CTL模板 '$TWO_RATIO_CTL_TEMPLATE' 未找到。请确保它位于脚本执行的当前目录。"
+  echo "错误: 2-ratio模型CTL模板 '$TWO_RATIO_CTL_TEMPLATE' 未找到。"
   exit 1
 fi
 
-# 创建输出目录 (如果不存在)
-mkdir -p "$OUTPUT_DIR"
-echo "确保输出目录存在: $OUTPUT_DIR"
+# 创建主输出目录 (如果不存在)
+mkdir -p "$ABS_OUTPUT_DIR"
+echo "确保主输出目录存在: $ABS_OUTPUT_DIR"
 
 # 加载CTL模板内容
 m0_ctl_template_content=$(cat "$M0_CTL_TEMPLATE")
@@ -146,31 +153,34 @@ for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
     og_base_name="${seq_file_basename_full%.fasta}" #例如 OG0001155_codon.clipkit
     gene_name="$og_base_name"
 
-    # 构建对应的树文件路径 (期望 *_codon.clipkit_marked.treefile)
     current_tree_file="$TREE_DIR_PATH/${og_base_name}_marked.treefile"
 
     if [ ! -f "$current_tree_file" ]; then
       echo "警告: 序列文件 '$seq_file_path' 对应的树文件 '$current_tree_file' 未找到。跳过此序列。"
-      continue # 跳过当前序列文件
+      continue
     fi
 
-    abs_seq_file_path=$(realpath "$seq_file_path")
+    # realpath 用于序列和树文件仍然是好的，以防输入路径包含符号链接等。
+    abs_seq_file_path=$(realpath "$seq_file_path") 
     abs_tree_file_path=$(realpath "$current_tree_file")
 
     # --- M0 模型 (one-ratio) ---
-    m0_ctl_filename="${gene_name}_M0.ctl"
-    m0_ctl_path="$OUTPUT_DIR/$m0_ctl_filename"
-    m0_paml_outfile_path="$OUTPUT_DIR/${gene_name}_M0_paml_results.txt"
-    m0_codeml_log_path="$OUTPUT_DIR/${gene_name}_M0.codeml.log"
+    m0_workdir="$ABS_OUTPUT_DIR/${gene_name}_M0_work"
+    mkdir -p "$m0_workdir"
+    m0_ctl_filename_basename="${gene_name}_M0.ctl" 
+    m0_ctl_path_in_workdir="$m0_workdir/$m0_ctl_filename_basename"
+    
+    m0_paml_outfile_path_abs="$ABS_OUTPUT_DIR/${gene_name}_M0_paml_results.txt"
+    m0_codeml_log_path_abs="$ABS_OUTPUT_DIR/${gene_name}_M0.codeml.log"
 
     current_m0_ctl_content=$(echo "$m0_ctl_template_content" | \
         sed "s|$SEQFILE_PLACEHOLDER|$abs_seq_file_path|g" | \
         sed "s|$TREEFILE_PLACEHOLDER_IN_CTL|$abs_tree_file_path|g" | \
-        sed "s|$M0_OUTFILE_PLACEHOLDER|$m0_paml_outfile_path|g")
-    echo "$current_m0_ctl_content" > "$m0_ctl_path"
+        sed "s|$M0_OUTFILE_PLACEHOLDER|$m0_paml_outfile_path_abs|g")
+    echo "$current_m0_ctl_content" > "$m0_ctl_path_in_workdir"
 
-    echo "正在为 $gene_name 启动PAML (M0 模型)..."
-    singularity exec -e -B /lustre10:/lustre10 /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$m0_ctl_path" > "$m0_codeml_log_path" 2>&1 &
+    echo "正在为 $gene_name 启动PAML (M0 模型)... 工作目录: $m0_workdir"
+    (cd "$m0_workdir" && singularity exec -e -B /lustre10:/lustre10 /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$m0_ctl_filename_basename" > "$m0_codeml_log_path_abs" 2>&1) &
     job_count=$((job_count + 1))
     if [ "$job_count" -ge "$max_jobs" ]; then
         echo "达到最大并行任务数 ($max_jobs), 等待一个任务完成..."
@@ -179,19 +189,22 @@ for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
     fi
 
     # --- 2-ratio 模型 ---
-    two_ratio_ctl_filename="${gene_name}_2ratio.ctl"
-    two_ratio_ctl_path="$OUTPUT_DIR/$two_ratio_ctl_filename"
-    two_ratio_paml_outfile_path="$OUTPUT_DIR/${gene_name}_2ratio_paml_results.txt"
-    two_ratio_codeml_log_path="$OUTPUT_DIR/${gene_name}_2ratio.codeml.log"
+    two_ratio_workdir="$ABS_OUTPUT_DIR/${gene_name}_2ratio_work"
+    mkdir -p "$two_ratio_workdir"
+    two_ratio_ctl_filename_basename="${gene_name}_2ratio.ctl"
+    two_ratio_ctl_path_in_workdir="$two_ratio_workdir/$two_ratio_ctl_filename_basename"
+
+    two_ratio_paml_outfile_path_abs="$ABS_OUTPUT_DIR/${gene_name}_2ratio_paml_results.txt"
+    two_ratio_codeml_log_path_abs="$ABS_OUTPUT_DIR/${gene_name}_2ratio.codeml.log"
 
     current_two_ratio_ctl_content=$(echo "$two_ratio_ctl_template_content" | \
         sed "s|$SEQFILE_PLACEHOLDER|$abs_seq_file_path|g" | \
         sed "s|$TREEFILE_PLACEHOLDER_IN_CTL|$abs_tree_file_path|g" | \
-        sed "s|$TWO_RATIO_OUTFILE_PLACEHOLDER|$two_ratio_paml_outfile_path|g")
-    echo "$current_two_ratio_ctl_content" > "$two_ratio_ctl_path"
+        sed "s|$TWO_RATIO_OUTFILE_PLACEHOLDER|$two_ratio_paml_outfile_path_abs|g")
+    echo "$current_two_ratio_ctl_content" > "$two_ratio_ctl_path_in_workdir"
 
-    echo "正在为 $gene_name 启动PAML (2-ratio 模型)..."
-    singularity exec -e -B /lustre10:/lustre10 /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$two_ratio_ctl_path" > "$two_ratio_codeml_log_path" 2>&1 &
+    echo "正在为 $gene_name 启动PAML (2-ratio 模型)... 工作目录: $two_ratio_workdir"
+    (cd "$two_ratio_workdir" && singularity exec -e -B /lustre10:/lustre10 /usr/local/biotools/p/paml:4.9--h779adbc_6 codeml "$two_ratio_ctl_filename_basename" > "$two_ratio_codeml_log_path_abs" 2>&1) &
     job_count=$((job_count + 1))
     if [ "$job_count" -ge "$max_jobs" ]; then
         echo "达到最大并行任务数 ($max_jobs), 等待一个任务完成..."
@@ -199,7 +212,7 @@ for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
         job_count=$((job_count - 1))
     fi
 
-    echo "已为 $gene_name 提交PAML任务 (M0 模型 和 2-ratio 模型)。CTL文件: $m0_ctl_path, $two_ratio_ctl_path"
+    echo "已为 $gene_name 提交PAML任务 (M0 模型 和 2-ratio 模型)。CTL文件在各自的 _work 目录中。"
   else
     echo "警告: '$seq_file_path' 不是一个文件, 跳过。"
   fi
@@ -207,4 +220,4 @@ done
 
 echo "所有PAML任务已提交。等待剩余任务完成..."
 wait # 等待所有后台任务执行完毕
-echo "所有PAML (branch models) 分析已完成。结果保存在: $OUTPUT_DIR" 
+echo "所有PAML (branch models) 分析已完成。结果保存在: $ABS_OUTPUT_DIR (主要结果和日志), 各自的 _work 子目录包含辅助文件。" 
