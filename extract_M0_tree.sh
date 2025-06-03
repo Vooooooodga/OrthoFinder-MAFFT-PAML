@@ -18,27 +18,27 @@
 # !!! 用户：请仔细检查并根据您的实际情况修改以下路径和参数 !!!
 
 # 项目基础路径 (例如: /home/user/my_project)
-PROJECT_BASE_PATH="/Users/jiayuhang/Desktop/doc/OrthoFinder-MAFFT-PAML" # <--- 修改这里
+PROJECT_BASE_PATH="/home/yuhangjia/data/AlternativeSplicing/9_overlap_DAS_evo_rate_analysis" # <--- 修改这里
 
 # 包含 PAML M0 模型输出文件的目录 (通常是 branch_model_results 子目录)
 # 文件名应为 *_M0_paml_results.txt
-M0_RESULTS_DIR="${PROJECT_BASE_PATH}/branch_model_results" # <--- 修改这里 (假设M0结果在此)
+M0_RESULTS_DIR="${PROJECT_BASE_PATH}/branch_model" # <--- 修改这里 (根据用户日志更新)
 
 # mark_foreground.py 脚本的完整路径
-MARK_PY_SCRIPT="${PROJECT_BASE_PATH}/mark_foreground.py" # <--- 修改这里
+MARK_PY_SCRIPT="${PROJECT_BASE_PATH}/OrthoFinder-MAFFT-PAML/mark_foreground.py" # <--- 修改这里 (根据用户日志更新)
 
 # 物种社会性信息文件 (CSV 或 TSV) 的完整路径
-SOCIALITY_FILE="${PROJECT_BASE_PATH}/species_sociality_data.csv" # <--- 修改这里
+SOCIALITY_FILE="${PROJECT_BASE_PATH}/genomicSources.csv" # <--- 修改这里 (根据用户日志更新)
 
 # 最终保存标记后树文件的目录
 # 所有标记后的树文件将直接保存在此目录中
-FINAL_MARKED_TREES_OUTPUT_DIR="${PROJECT_BASE_PATH}/gene_trees_from_M0_remarked_all"
+FINAL_MARKED_TREES_OUTPUT_DIR="${PROJECT_BASE_PATH}/gene_trees_from_M0_remarked" # <--- 根据用户日志更新
 
 # 用于存放所有提取出来的原始树文件的临时目录 (脚本会自动创建和清理)
 TEMP_EXTRACTED_TREES_DIR="${PROJECT_BASE_PATH}/temp_all_extracted_m0_trees"
 
 # mark_foreground.py 脚本所需的参数
-TARGET_SOCIALITY="Advanced Eusocial" # <--- 根据需要修改 (例如: "Solitary", "Primitive Eusocial")
+TARGET_SOCIALITY="advanced eusocial" # <--- 根据用户日志更新 (例如: "Solitary", "Primitive Eusocial")
 PAML_MARKER="#1"                     # <--- 根据需要修改 (PAML 前景标记)
 
 # --- 配置结束 ---
@@ -129,7 +129,8 @@ EOFawk
 echo "步骤 1: 提取所有 M0 树到临时目录..."
 extracted_tree_count=0
 # 查找并处理每个 PAML M0 结果文件
-find "$M0_RESULTS_DIR" -type f -name "*_M0_paml_results.txt" -print0 | while IFS= read -r -d $'\0' m0_result_file; do
+# 使用进程替换 < <(find ...) 来确保 while 循环在当前 shell 中运行，从而正确更新 extracted_tree_count
+while IFS= read -r -d $\'\\0\' m0_result_file; do
     gene_base_name=$(basename "$m0_result_file" "_M0_paml_results.txt")
     echo "  正在从 $m0_result_file 提取树 (基因: $gene_base_name)..."
 
@@ -146,7 +147,7 @@ find "$M0_RESULTS_DIR" -type f -name "*_M0_paml_results.txt" -print0 | while IFS
     echo "$extracted_tree_string" > "$extracted_tree_filepath"
     echo "    提取的树已保存至: $extracted_tree_filepath"
     extracted_tree_count=$((extracted_tree_count + 1))
-done
+done < <(find "$M0_RESULTS_DIR" -type f -name "*_M0_paml_results.txt" -print0)
 
 echo "步骤 1 完成: 共提取了 $extracted_tree_count 个树文件到 $TEMP_EXTRACTED_TREES_DIR"
 echo "-----------------------------------------------------"
