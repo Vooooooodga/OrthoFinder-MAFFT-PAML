@@ -9,7 +9,6 @@ seqtype = 1
 CodonFreq = 2
 icode = 0
 clock = 0
-Small_Diff = 1e-5
 
 model = 0       * 所有分支共享一个omega
 NSsites = 0     * 所有位点共享一个omega

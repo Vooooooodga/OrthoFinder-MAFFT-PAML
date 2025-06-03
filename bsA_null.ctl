@@ -9,7 +9,6 @@ seqtype = 1
 CodonFreq = 2
 icode = 0
 clock = 0
-Small_Diff = 1e-5
 
 model = 2
 NSsites = 2

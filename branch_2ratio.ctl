@@ -9,7 +9,6 @@ seqtype = 1
 CodonFreq = 2
 icode = 0
 clock = 0
-Small_Diff = 1e-5
 
 model = 2       * 允许不同标记的分支有不同的omega
 NSsites = 0     * 所有位点共享其所在分支类型的omega值
