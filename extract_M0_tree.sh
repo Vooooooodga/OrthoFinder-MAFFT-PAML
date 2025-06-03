@@ -130,7 +130,8 @@ echo "步骤 1: 提取所有 M0 树到临时目录..."
 extracted_tree_count=0
 # 查找并处理每个 PAML M0 结果文件
 # 使用进程替换 < <(find ...) 来确保 while 循环在当前 shell 中运行，从而正确更新 extracted_tree_count
-while IFS= read -r -d $\'\\0\' m0_result_file; do
+# 使用 read -r -d '' 来正确读取 find -print0 输出的空字符分隔的文件名
+while IFS= read -r -d '' m0_result_file; do
     gene_base_name=$(basename "$m0_result_file" "_M0_paml_results.txt")
     echo "  正在从 $m0_result_file 提取树 (基因: $gene_base_name)..."
 
