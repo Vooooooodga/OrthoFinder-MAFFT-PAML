@@ -9,6 +9,7 @@ seqtype = 1
 CodonFreq = 2
 icode = 0
 clock = 0
+Small_Diff = 1e-8
 
 model = 2
 NSsites = 2
@@ -20,7 +21,7 @@ kappa = 2
 fix_alpha = 1
 alpha = .0
 Malpha = 0
-ncatG = 4
+ncatG = 8
 getSE = 0
 RateAncestor = 0
 method = 0
