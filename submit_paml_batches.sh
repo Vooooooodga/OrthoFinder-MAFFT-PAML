@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # --- Configuration for the main submission script ---
-# Эти значения могут быть изменены пользователем
 PROJECT_BASE_PATH="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term" # 需要与原脚本一致或作为参数传入
 SEQ_ALN_DIR_PARAM="${PROJECT_BASE_PATH}/GO_0008380_msa_codon_clipkit"
 TREE_DIR_PATH_PARAM="${PROJECT_BASE_PATH}/gene_trees_from_M0_remarked"
@@ -359,14 +358,14 @@ EOF
     # 提交子作业脚本
     echo "  正在提交批次 ${batch_id} (${batch_script_path})..."
     # Store sbatch output, if any
-    submission_output=\$(${SUBMISSION_COMMAND} "${batch_script_path}" 2>&1)
-    submission_status=\$?
+    submission_output=$(${SUBMISSION_COMMAND} "${batch_script_path}" 2>&1)
+    submission_status=$?
     
-    if [ \${submission_status} -eq 0 ]; then
-        echo "    成功提交: \${submission_output}"
+    if [ ${submission_status} -eq 0 ]; then
+        echo "    成功提交: ${submission_output}"
     else
-        echo "    错误: 提交失败 (状态码: \${submission_status})。输出:"
-        echo "    \${submission_output}"
+        echo "    错误: 提交失败 (状态码: ${submission_status})。输出:"
+        echo "${submission_output}"
     fi
     
     # 可选：在提交下一个批次前稍作停顿，以避免瞬间给SLURM控制器过大压力
