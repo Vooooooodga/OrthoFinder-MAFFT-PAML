@@ -9,7 +9,7 @@ seqtype = 1
 CodonFreq = 2
 icode = 0
 clock = 0
-Small_Diff = 1e-8
+Small_Diff = 1e-5
 
 model = 2       * 指定前景分支有不同的omega类别
 NSsites = 2     * 使用允许正选择的位点模型 (M2a的位点部分，应用于前景枝)
@@ -25,4 +25,4 @@ ncatG = 4
 getSE = 0
 RateAncestor = 0
 method = 0
-fix_blength = 1
+fix_blength = 2
