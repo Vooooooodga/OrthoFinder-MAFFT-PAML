@@ -24,4 +24,4 @@ ncatG = 4
 getSE = 0
 RateAncestor = 0
 method = 0
-fix_blength = 1
+fix_blength = 2
