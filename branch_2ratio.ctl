@@ -13,7 +13,7 @@ clock = 0
 model = 2       * 允许不同标记的分支有不同的omega
 NSsites = 0     * 所有位点共享其所在分支类型的omega值
 fix_omega = 0   * 估计omega
-omega = 0.4     * 初始omega值
+omega = 1       * 初始omega值
 
 fix_kappa = 0
 kappa = 2
