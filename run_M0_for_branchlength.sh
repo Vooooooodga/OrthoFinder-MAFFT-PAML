@@ -75,9 +75,8 @@ for seq_file_path in "$SEQ_ALN_DIR"/*_codon.clipkit.fasta; do
     # 假设树文件名与序列文件名前缀一致，但后缀不同
     # 例如，如果序列文件是 OG0000001_codon.clipkit.fasta，对应的树文件可能是 OG0000001_codon.clipkit.fasta_from_M0_marked.treefile
     # 或者，您可能需要调整下面的逻辑以匹配您的树文件命名约定
-    current_tree_file="$TREE_DIR_PATH/${seq_file_basename_full}_from_M0_marked.treefile" # 这是基于您原脚本的命名
-    # 如果您的树文件命名更简单，如 ${gene_name}.treefile，请相应修改
-    # current_tree_file="$TREE_DIR_PATH/${gene_name}.treefile" 
+    seq_file_prefix="${seq_file_basename_full%.fasta}" # 例如从 OG0008465_codon.clipkit.fasta 提取 OG0008465_codon.clipkit
+    current_tree_file="$TREE_DIR_PATH/${seq_file_prefix}_marked.treefile" # 新的树文件命名格式
 
     if [ ! -f "$current_tree_file" ]; then
       echo "警告: 序列文件 '$seq_file_path' 对应的树文件 '$current_tree_file' 未找到。跳过此基因 '$gene_name'。"
