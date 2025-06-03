@@ -81,24 +81,24 @@ BASE_NAMES=(
 "Wasmannia_auropunctata"
 )
 
-# 硬编码路径变量 (使用绝对路径)
+# 硬编码路径变量
 SEQ_ALN_DIR="$PROJECT_BASE_PATH/DAS_aligned_codon_clipkit"
 TREE_DIR_PATH="$PROJECT_BASE_PATH/gene_trees_from_M0_remarked" # 使用M0提取并标记的树
 OUTPUT_DIR_NAME="$PROJECT_BASE_PATH/paml_M0_Branch_BranchSiteA_multiOmega_on_M0trees" # 新的输出目录名
 
 M0_CTL_TEMPLATE="$PROJECT_BASE_PATH/branch_M0.ctl" # M0 模型CTL模板
 
-# 分支模型 (原2-ratio) CTL模板 - 不同初始omega
-BRANCH_CTL_OMEGA05_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega0.5.ctl"
-BRANCH_CTL_OMEGA10_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega1.0.ctl"
-BRANCH_CTL_OMEGA15_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega1.5.ctl"
-BRANCH_CTL_OMEGA20_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega2.0.ctl"
+# 分支模型 (原2-ratio) CTL模板 - 不同初始omega - 变量名统一为 XpX 格式
+BRANCH_CTL_OMEGA0P5_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega0.5.ctl"
+BRANCH_CTL_OMEGA1P0_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega1.0.ctl"
+BRANCH_CTL_OMEGA1P5_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega1.5.ctl"
+BRANCH_CTL_OMEGA2P0_TEMPLATE="$PROJECT_BASE_PATH/branch_2ratio_omega2.0.ctl"
 
-# 分支位点模型A - 备择模型 CTL模板 - 不同初始omega
-BSA_ALT_CTL_OMEGA05_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega0.5.ctl"
-BSA_ALT_CTL_OMEGA10_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega1.0.ctl"
-BSA_ALT_CTL_OMEGA15_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega1.5.ctl"
-BSA_ALT_CTL_OMEGA20_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega2.0.ctl"
+# 分支位点模型A - 备择模型 CTL模板 - 不同初始omega - 变量名统一为 XpX 格式
+BSA_ALT_CTL_OMEGA0P5_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega0.5.ctl"
+BSA_ALT_CTL_OMEGA1P0_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega1.0.ctl"
+BSA_ALT_CTL_OMEGA1P5_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega1.5.ctl"
+BSA_ALT_CTL_OMEGA2P0_TEMPLATE="$PROJECT_BASE_PATH/bsA_alt_omega2.0.ctl"
 
 BSA_NULL_CTL_TEMPLATE="$PROJECT_BASE_PATH/bsA_null.ctl" # 分支位点模型A - 空模型 CTL模板
 
@@ -111,14 +111,14 @@ echo "  序列比对目录: $SEQ_ALN_DIR"
 echo "  树文件目录 (使用M0提取并标记的树): $TREE_DIR_PATH"
 echo "  输出目录 (绝对): $ABS_OUTPUT_DIR"
 echo "  M0 模型 CTL模板: $M0_CTL_TEMPLATE"
-echo "  分支模型 CTL模板 (omega 0.5): $BRANCH_CTL_OMEGA05_TEMPLATE"
-echo "  分支模型 CTL模板 (omega 1.0): $BRANCH_CTL_OMEGA10_TEMPLATE"
-echo "  分支模型 CTL模板 (omega 1.5): $BRANCH_CTL_OMEGA15_TEMPLATE"
-echo "  分支模型 CTL模板 (omega 2.0): $BRANCH_CTL_OMEGA20_TEMPLATE"
-echo "  分支位点模型A - 备择 CTL模板 (omega 0.5): $BSA_ALT_CTL_OMEGA05_TEMPLATE"
-echo "  分支位点模型A - 备择 CTL模板 (omega 1.0): $BSA_ALT_CTL_OMEGA10_TEMPLATE"
-echo "  分支位点模型A - 备择 CTL模板 (omega 1.5): $BSA_ALT_CTL_OMEGA15_TEMPLATE"
-echo "  分支位点模型A - 备择 CTL模板 (omega 2.0): $BSA_ALT_CTL_OMEGA20_TEMPLATE"
+echo "  分支模型 CTL模板 (omega 0.5): $BRANCH_CTL_OMEGA0P5_TEMPLATE"
+echo "  分支模型 CTL模板 (omega 1.0): $BRANCH_CTL_OMEGA1P0_TEMPLATE"
+echo "  分支模型 CTL模板 (omega 1.5): $BRANCH_CTL_OMEGA1P5_TEMPLATE"
+echo "  分支模型 CTL模板 (omega 2.0): $BRANCH_CTL_OMEGA2P0_TEMPLATE"
+echo "  分支位点模型A - 备择 CTL模板 (omega 0.5): $BSA_ALT_CTL_OMEGA0P5_TEMPLATE"
+echo "  分支位点模型A - 备择 CTL模板 (omega 1.0): $BSA_ALT_CTL_OMEGA1P0_TEMPLATE"
+echo "  分支位点模型A - 备择 CTL模板 (omega 1.5): $BSA_ALT_CTL_OMEGA1P5_TEMPLATE"
+echo "  分支位点模型A - 备择 CTL模板 (omega 2.0): $BSA_ALT_CTL_OMEGA2P0_TEMPLATE"
 echo "  分支位点模型A - 空 CTL模板: $BSA_NULL_CTL_TEMPLATE"
 
 # 检查输入文件/目录是否存在
@@ -134,36 +134,36 @@ if [ ! -f "$M0_CTL_TEMPLATE" ]; then
   echo "错误: M0模型CTL模板 '$M0_CTL_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BRANCH_CTL_OMEGA05_TEMPLATE" ]; then
-  echo "错误: 分支模型 (omega 0.5) CTL模板 '$BRANCH_CTL_OMEGA05_TEMPLATE' 未找到。"
+if [ ! -f "$BRANCH_CTL_OMEGA0P5_TEMPLATE" ]; then
+  echo "错误: 分支模型 (omega 0.5) CTL模板 '$BRANCH_CTL_OMEGA0P5_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BRANCH_CTL_OMEGA10_TEMPLATE" ]; then
-  echo "错误: 分支模型 (omega 1.0) CTL模板 '$BRANCH_CTL_OMEGA10_TEMPLATE' 未找到。"
+if [ ! -f "$BRANCH_CTL_OMEGA1P0_TEMPLATE" ]; then
+  echo "错误: 分支模型 (omega 1.0) CTL模板 '$BRANCH_CTL_OMEGA1P0_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BRANCH_CTL_OMEGA15_TEMPLATE" ]; then
-  echo "错误: 分支模型 (omega 1.5) CTL模板 '$BRANCH_CTL_OMEGA15_TEMPLATE' 未找到。"
+if [ ! -f "$BRANCH_CTL_OMEGA1P5_TEMPLATE" ]; then
+  echo "错误: 分支模型 (omega 1.5) CTL模板 '$BRANCH_CTL_OMEGA1P5_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BRANCH_CTL_OMEGA20_TEMPLATE" ]; then
-  echo "错误: 分支模型 (omega 2.0) CTL模板 '$BRANCH_CTL_OMEGA20_TEMPLATE' 未找到。"
+if [ ! -f "$BRANCH_CTL_OMEGA2P0_TEMPLATE" ]; then
+  echo "错误: 分支模型 (omega 2.0) CTL模板 '$BRANCH_CTL_OMEGA2P0_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BSA_ALT_CTL_OMEGA05_TEMPLATE" ]; then
-  echo "错误: 分支位点模型A - 备择 (omega 0.5) CTL模板 '$BSA_ALT_CTL_OMEGA05_TEMPLATE' 未找到。"
+if [ ! -f "$BSA_ALT_CTL_OMEGA0P5_TEMPLATE" ]; then
+  echo "错误: 分支位点模型A - 备择 (omega 0.5) CTL模板 '$BSA_ALT_CTL_OMEGA0P5_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BSA_ALT_CTL_OMEGA10_TEMPLATE" ]; then
-  echo "错误: 分支位点模型A - 备择 (omega 1.0) CTL模板 '$BSA_ALT_CTL_OMEGA10_TEMPLATE' 未找到。"
+if [ ! -f "$BSA_ALT_CTL_OMEGA1P0_TEMPLATE" ]; then
+  echo "错误: 分支位点模型A - 备择 (omega 1.0) CTL模板 '$BSA_ALT_CTL_OMEGA1P0_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BSA_ALT_CTL_OMEGA15_TEMPLATE" ]; then
-  echo "错误: 分支位点模型A - 备择 (omega 1.5) CTL模板 '$BSA_ALT_CTL_OMEGA15_TEMPLATE' 未找到。"
+if [ ! -f "$BSA_ALT_CTL_OMEGA1P5_TEMPLATE" ]; then
+  echo "错误: 分支位点模型A - 备择 (omega 1.5) CTL模板 '$BSA_ALT_CTL_OMEGA1P5_TEMPLATE' 未找到。"
   exit 1
 fi
-if [ ! -f "$BSA_ALT_CTL_OMEGA20_TEMPLATE" ]; then
-  echo "错误: 分支位点模型A - 备择 (omega 2.0) CTL模板 '$BSA_ALT_CTL_OMEGA20_TEMPLATE' 未找到。"
+if [ ! -f "$BSA_ALT_CTL_OMEGA2P0_TEMPLATE" ]; then
+  echo "错误: 分支位点模型A - 备择 (omega 2.0) CTL模板 '$BSA_ALT_CTL_OMEGA2P0_TEMPLATE' 未找到。"
   exit 1
 fi
 if [ ! -f "$BSA_NULL_CTL_TEMPLATE" ]; then
@@ -177,14 +177,14 @@ echo "确保主输出目录存在: $ABS_OUTPUT_DIR"
 
 # 加载CTL模板内容
 m0_ctl_template_content=$(cat "$M0_CTL_TEMPLATE")
-branch_ctl_omega05_content=$(cat "$BRANCH_CTL_OMEGA05_TEMPLATE")
-branch_ctl_omega10_content=$(cat "$BRANCH_CTL_OMEGA10_TEMPLATE")
-branch_ctl_omega15_content=$(cat "$BRANCH_CTL_OMEGA15_TEMPLATE")
-branch_ctl_omega20_content=$(cat "$BRANCH_CTL_OMEGA20_TEMPLATE")
-bsa_alt_ctl_omega05_content=$(cat "$BSA_ALT_CTL_OMEGA05_TEMPLATE")
-bsa_alt_ctl_omega10_content=$(cat "$BSA_ALT_CTL_OMEGA10_TEMPLATE")
-bsa_alt_ctl_omega15_content=$(cat "$BSA_ALT_CTL_OMEGA15_TEMPLATE")
-bsa_alt_ctl_omega20_content=$(cat "$BSA_ALT_CTL_OMEGA20_TEMPLATE")
+branch_ctl_omega0p5_content=$(cat "$BRANCH_CTL_OMEGA0P5_TEMPLATE")
+branch_ctl_omega1p0_content=$(cat "$BRANCH_CTL_OMEGA1P0_TEMPLATE")
+branch_ctl_omega1p5_content=$(cat "$BRANCH_CTL_OMEGA1P5_TEMPLATE")
+branch_ctl_omega2p0_content=$(cat "$BRANCH_CTL_OMEGA2P0_TEMPLATE")
+bsa_alt_ctl_omega0p5_content=$(cat "$BSA_ALT_CTL_OMEGA0P5_TEMPLATE")
+bsa_alt_ctl_omega1p0_content=$(cat "$BSA_ALT_CTL_OMEGA1P0_TEMPLATE")
+bsa_alt_ctl_omega1p5_content=$(cat "$BSA_ALT_CTL_OMEGA1P5_TEMPLATE")
+bsa_alt_ctl_omega2p0_content=$(cat "$BSA_ALT_CTL_OMEGA2P0_TEMPLATE")
 bsa_null_ctl_template_content=$(cat "$BSA_NULL_CTL_TEMPLATE")
 
 # 定义CTL模板中的通用占位符
