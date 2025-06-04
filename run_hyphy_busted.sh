@@ -27,8 +27,12 @@ HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0" # Singularity镜像
 # SINGULARITY_BIND_OPTS="-B /home/yuhangjia/data:/home/yuhangjia/data"
 SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # Singularity 绑定路径, 根据需要修改, e.g. "-B /path1:/path1 -B /path2:/path2"
 
-# 创建输出目录 (如果不存在)
+# 新的目录，用于存放修改后的树文件
+MODIFIED_TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/hyphy_modified_trees"
+
+# 创建输出目录和修改后的树目录 (如果不存在)
 mkdir -p "${OUTPUT_DIR}"
+mkdir -p "${MODIFIED_TREE_DIR}"
 
 # 并发控制参数
 # 总共请求了 64 CPUs，每个 hyphy 进程使用 4 CPUs
@@ -61,23 +65,37 @@ for msa_file in "${MSA_DIR}"/*_codon.clipkit.fasta; do
         tree_file="${TREE_DIR}/${gene_id}_from_M0_marked.treefile"
         output_json="${OUTPUT_DIR}/${gene_id}.BUSTED.json"
 
-        # 检查 tree 文件是否存在
+        # 为修改后的树文件定义路径
+        modified_tree_file="${MODIFIED_TREE_DIR}/${gene_id}_from_M0_marked.treefile"
+
+        # 检查原始 tree 文件是否存在
         if [ ! -f "$tree_file" ]; then
-            echo "WARNING: Tree file not found for ${gene_id}: ${tree_file}. Skipping."
+            echo "WARNING: Original tree file not found for ${gene_id}: ${tree_file}. Skipping."
             continue
         fi
 
-        echo "Processing ${gene_id}: MSA='${base_name}', Tree='$(basename "${tree_file}")'"
+        # 预处理树文件：将 #1 替换为 {foreground}
+        echo "Preprocessing tree file for ${gene_id}: Replacing #1 with {foreground}"
+        sed 's/#1/{foreground}/g' "${tree_file}" > "${modified_tree_file}"
+
+        # 检查 sed 是否成功创建了文件 (基本检查)
+        if [ ! -s "${modified_tree_file}" ]; then
+            echo "ERROR: Failed to preprocess tree file for ${gene_id} or modified tree is empty. Original: ${tree_file}. Attempted modified: ${modified_tree_file}. Skipping."
+            # 可以选择删除空的修改文件
+            rm -f "${modified_tree_file}"
+            continue
+        fi
+
+        echo "Processing ${gene_id}: MSA='${base_name}', Tree='$(basename "${modified_tree_file}")' (modified)"
 
         # 运行 HyPhy BUSTED 命令
-        # 使用 --CPU 4 来指定每个 hyphy 进程使用的核心数
-        # 命令在后台运行 (&)
+        # 使用修改后的树文件和 --branches foreground
         singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy -m CPU=4 busted \\
             --alignment "${msa_file}" \\
-            --tree "${tree_file}" \\
+            --tree "${modified_tree_file}" \\
             --output "${output_json}" \\
             --code Universal \\
-            --branches '#1' < /dev/null &
+            --branches foreground < /dev/null &
 
         job_count=$((job_count + 1))
         echo "Launched job for ${gene_id}. Current job count: ${job_count}"
