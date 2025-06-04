@@ -76,7 +76,7 @@ for msa_file in "${MSA_DIR}"/*_codon.clipkit.fasta; do
             --alignment "${msa_file}" \\
             --tree "${tree_file}" \\
             --output "${output_json}" \\
-            --CPU 4 &
+            --CPU 4 < /dev/null &
 
         job_count=$((job_count + 1))
         echo "Launched job for ${gene_id}. Current job count: ${job_count}"
