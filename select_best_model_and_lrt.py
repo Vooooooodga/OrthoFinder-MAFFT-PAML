@@ -25,6 +25,51 @@ def parse_lnL(file_path):
         print(f"错误: 打开或解析文件 {file_path} 时发生错误: {e}")
         return None, None
 
+def parse_branch_w_values(file_path):
+    """从PAML branch model结果文件中解析 w (dN/dS) for branches 值。"""
+    try:
+        with open(file_path, 'r') as f:
+            for line in f:
+                if "w (dN/dS) for branches:" in line:
+                    w_values_str = line.split(":", 1)[1].strip()
+                    return w_values_str
+        return None
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+def parse_bsa_beb_sites(file_path):
+    """从PAML branch-site model结果文件中解析BEB分析中带星号的位点信息。"""
+    beb_sites = []
+    in_beb_section = False
+    try:
+        with open(file_path, 'r') as f:
+            for line in f:
+                if "Bayes Empirical Bayes (BEB) analysis" in line:
+                    in_beb_section = True
+                    continue
+
+                if in_beb_section:
+                    stripped_line = line.strip()
+                    if not stripped_line or "The grid" in stripped_line or "Prob(w>1) for branches" in stripped_line:
+                        in_beb_section = False
+                        break
+                    
+                    if "*" in stripped_line:
+                        # 简单的启发式检查，是否像一个位点行
+                        parts = stripped_line.split()
+                        if len(parts) >= 3 and parts[0].isdigit() and parts[1].isalpha() and len(parts[1]) == 1:
+                            beb_sites.append(stripped_line)
+        
+        if beb_sites:
+            return "; ".join(beb_sites)
+        return None
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
 def select_best_model_from_list(file_paths, gene_id, model_type_description):
     """
     从给定的文件路径列表中选择具有最高 lnL 值的模型。
@@ -162,7 +207,8 @@ def main():
     with open(output_file, 'w') as out_f:
         out_f.write("Gene_ID,Test_Type,Best_Alt_Model_File,Alt_lnL,Alt_np,"
                     "Null_Model_File,Null_lnL,Null_np,"
-                    "LRT_Statistic,df,P_Value,Significance_0.05\n")
+                    "LRT_Statistic,df,P_Value,Significance_0.05,"
+                    "Branch_w_values,BEB_Positive_Sites\n")
 
         for gene_id, models in sorted(gene_model_files.items()):
             print(f"--- 正在处理基因: {gene_id} ---")
@@ -190,11 +236,15 @@ def main():
                         lr_stat, df, p_val = perform_lrt(best_branch_alt_lnL, best_branch_alt_np, m0_lnL, m0_np)
                         if p_val is not None:
                             significance = '+' if p_val < 0.05 else '-'
+                            branch_w_values_str = parse_branch_w_values(best_branch_alt_file) if best_branch_alt_file else ""
+                            branch_w_values_csv = branch_w_values_str.replace('"', '""') if branch_w_values_str else ""
+                            
                             out_f.write(
                                 f"{gene_id},Branch_vs_M0,"
                                 f"{os.path.basename(best_branch_alt_file)},{best_branch_alt_lnL or ''},{best_branch_alt_np or ''},"
                                 f"{os.path.basename(m0_file_path)},{m0_lnL or ''},{m0_np or ''},"
-                                f"{lr_stat if lr_stat is not None else ''},{df if df is not None else ''},{p_val:.6g},{significance}\n"
+                                f"{lr_stat if lr_stat is not None else ''},{df if df is not None else ''},{p_val:.6g},{significance},"
+                                f"\"{branch_w_values_csv}\",\"\"\n"
                             )
                             print(f"基因 {gene_id} (Branch vs M0): LRT P-value = {p_val:.4g} ({significance})")
                         else:
@@ -228,11 +278,15 @@ def main():
                         lr_stat, df, p_val = perform_lrt(best_bsa_alt_lnL, best_bsa_alt_np, bsa_null_lnL, bsa_null_np)
                         if p_val is not None:
                             significance = '+' if p_val < 0.05 else '-'
+                            beb_sites_str = parse_bsa_beb_sites(best_bsa_alt_file) if best_bsa_alt_file else ""
+                            beb_sites_csv = beb_sites_str.replace('"', '""') if beb_sites_str else ""
+
                             out_f.write(
                                 f"{gene_id},BsA_Alt_vs_Null,"
                                 f"{os.path.basename(best_bsa_alt_file)},{best_bsa_alt_lnL or ''},{best_bsa_alt_np or ''},"
                                 f"{os.path.basename(bsa_null_file_path)},{bsa_null_lnL or ''},{bsa_null_np or ''},"
-                                f"{lr_stat if lr_stat is not None else ''},{df if df is not None else ''},{p_val:.6g},{significance}\n"
+                                f"{lr_stat if lr_stat is not None else ''},{df if df is not None else ''},{p_val:.6g},{significance},"
+                                f"\"\",\"{beb_sites_csv}\"\n"
                             )
                             print(f"基因 {gene_id} (BsA Alt vs Null): LRT P-value = {p_val:.4g} ({significance})")
                         else:
