@@ -15,9 +15,9 @@
 
 # --- 全局定义 ---
 # TODO: 用户需要根据实际情况修改以下路径
-MSA_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/GO_0008380_msa_codon_clipkit_for_paml"
-TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/gene_trees_from_M0_remarked_v2"
-MAIN_OUTPUT_DIR_RELAX="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/RELAX" # 主输出目录 for RELAX
+MSA_DIR="/home/yuhangjia/data/AlternativeSplicing/hyphy_relax"
+TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/hyphy_relax"
+MAIN_OUTPUT_DIR_RELAX="/home/yuhangjia/data/AlternativeSplicing/hyphy_relax/results" # 主输出目录 for RELAX
 HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0" # HyPhy singularity 镜像路径
 SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # 根据需要修改 Singularity 绑定路径
 
@@ -48,7 +48,7 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
     echo "DEBUG: Current msa_file_abs_path variable is: [${msa_file_abs_path}]"
     if [ -f "${msa_file_abs_path}" ]; then
         base_name=$(basename "${msa_file_abs_path}")
-        gene_id=$(echo "$base_name" | sed 's/_codon\\.clipkit\\.fasta$//')
+        gene_id=${base_name%_codon.clipkit.fasta}
 
         original_tree_file_abs_path="${TREE_DIR}/${gene_id}_from_M0_marked.treefile"
         # 输出的JSON文件路径 (子脚本将使用此路径)
