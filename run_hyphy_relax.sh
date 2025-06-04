@@ -86,8 +86,8 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
 #SBATCH --partition=short # TODO: 根据需要调整分区
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16 # RELAX 通常也是单CPU
-#SBATCH --mem=16G          # TODO: 根据需要调整内存
+#SBATCH --cpus-per-task=32 # RELAX 通常也是单CPU
+#SBATCH --mem=32G          # TODO: 根据需要调整内存
 #SBATCH --output=${SLURM_LOGS_DIR_RELAX}/${gene_id}_relax.out
 #SBATCH --error=${SLURM_LOGS_DIR_RELAX}/${gene_id}_relax.err
 
@@ -100,9 +100,10 @@ echo "Output JSON (RELAX): ${output_json_abs_path_relax}"
 # Make sure necessary parent directories for output exist
 mkdir -p "$(dirname "${output_json_abs_path_relax}")"
 
-singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy CPU=16 relax \\
+singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy CPU=32 relax \\
     --alignment "${msa_file_abs_path}" \\
     --tree "${modified_tree_file_abs_path_relax}" \\
+    --test test \\
     --output "${output_json_abs_path_relax}" \\
     --code Universal < /dev/null
 
