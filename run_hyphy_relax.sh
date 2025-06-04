@@ -66,13 +66,14 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
         fi
 
         # 2. 预处理树文件 (由父脚本完成)
-        #    HyPhy RELAX 需要树文件中标记 {test} 和 {reference} 分支。
-        #    此脚本假设原始树文件中包含占位符 #TEST 和 #REFERENCE。
-        echo "Preprocessing tree file for ${gene_id} (RELAX): Replacing #TEST with {test} and #REFERENCE with {reference}"
-        sed -e 's/#TEST/{test}/g' -e 's/#REFERENCE/{reference}/g' "${original_tree_file_abs_path}" > "${modified_tree_file_abs_path_relax}"
+        #    HyPhy RELAX 需要树文件中标记 {test} 分支。
+        #    此脚本将原始树文件中的 #1 标记 (代表前景分支) 替换为 {test}。
+        #    假设未在树中用 {test} 标记的其他所有分支将被 HyPhy RELAX 自动视为参考 (reference) 分支。
+        echo "Preprocessing tree file for ${gene_id} (RELAX): Replacing #1 with {test} (assuming other branches are reference)"
+        sed 's/#1/{test}/g' "${original_tree_file_abs_path}" > "${modified_tree_file_abs_path_relax}"
         
         if [ ! -s "${modified_tree_file_abs_path_relax}" ]; then
-            echo "ERROR: Failed to preprocess tree file for ${gene_id} (RELAX) or modified tree is empty. Original: ${original_tree_file_abs_path}. Check for #TEST and #REFERENCE tags. Skipping gene."
+            echo "ERROR: Failed to preprocess tree file for ${gene_id} (RELAX) or modified tree is empty. Original: ${original_tree_file_abs_path}. Check for the #1 tag. Skipping gene."
             rm -f "${modified_tree_file_abs_path_relax}" # 清理空的修改树文件
             continue
         fi
