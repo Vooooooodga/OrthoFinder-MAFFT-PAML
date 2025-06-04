@@ -42,9 +42,15 @@ echo "Tree Directory: ${TREE_DIR}"
 echo "Output Directory: ${OUTPUT_DIR}"
 echo "Max concurrent jobs: ${MAX_JOBS}"
 
+# DEBUG: List all files matching the pattern in MSA_DIR
+echo "DEBUG: Files found in ${MSA_DIR} matching *_codon.clipkit.fasta:"
+ls -1 "${MSA_DIR}"/*_codon.clipkit.fasta 2>/dev/null | tee /dev/stderr | wc -l
+echo "DEBUG: ---- End of file list ----"
+
 # 遍历 MSA 文件 (假设文件以 .fasta 结尾)
 # 用户提供的文件名格式是 OG0002009_codon.clipkit.fasta
 for msa_file in "${MSA_DIR}"/*_codon.clipkit.fasta; do
+    echo "DEBUG: Current msa_file variable is: [$msa_file]"
     if [ -f "$msa_file" ]; then
         base_name=$(basename "$msa_file")
         # 从 "OG0002009_codon.clipkit.fasta" 提取 "OG0002009"
