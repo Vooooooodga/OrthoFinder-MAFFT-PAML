@@ -1,108 +1,123 @@
 #!/bin/bash
 
-#SBATCH --job-name=hyphy_busted
-#SBATCH --partition=your_partition # 请替换为您的集群分区名称
+#SBATCH --job-name=hyphy_busted_PARENT # 主脚本的作业名
+#SBATCH --partition=your_partition      # 主脚本运行的分区 (可能与子作业不同)
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1    # 运行一个主脚本任务
-#SBATCH --cpus-per-task=32     # 为主脚本请求所有CPU，脚本内部管理并发
-#SBATCH --mem=64G             # 根据您的需求调整内存
-#SBATCH --time=72:00:00        # 根据您的需求调整运行时间
-#SBATCH --output=hyphy_busted_%j.out
-#SBATCH --error=hyphy_busted_%j.err
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1             # 主脚本本身不需要很多CPU
+#SBATCH --mem=2G                    # 主脚本本身不需要很多内存
+#SBATCH --time=02:00:00               # 主脚本提交作业的时间，根据基因数量调整
+#SBATCH --output=hyphy_busted_parent_%j.out
+#SBATCH --error=hyphy_busted_parent_%j.err
 
 # 加载 singularity 模块 (如果需要)
 # module load singularity # 取消注释并根据您的集群环境修改
 
-# 定义输入输出目录
+# --- 全局定义 ---
 MSA_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/GO_0008380_msa_codon_clipkit_for_paml"
 TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/gene_trees_from_M0_remarked_v2"
-OUTPUT_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/BUSTED"
-HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0" # Singularity镜像路径
+MAIN_OUTPUT_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/BUSTED" # 主输出目录
+HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0"
+SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # 根据需要修改
 
-# Singularity 绑定路径 (根据您的集群和数据位置进行修改)
-# 如果您的MSA、TREE或OUTPUT目录不在Singularity默认绑定的路径下(如 /home/$USER, /tmp, $PWD),
-# 您需要在这里明确指定绑定。
-# 示例: SINGULARITY_BIND_OPTS="-B /path/to/data_on_host:/data_in_container -B /another/path:/another/path"
-# 对于当前脚本中的路径，如果它们都在 /home/yuhangjia 下，通常不需要额外绑定。
-# 但为了明确和以防万一，您可以绑定一个共同的父目录，例如:
-# SINGULARITY_BIND_OPTS="-B /home/yuhangjia/data:/home/yuhangjia/data"
-SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # Singularity 绑定路径, 根据需要修改, e.g. "-B /path1:/path1 -B /path2:/path2"
+# 新的目录，用于存放修改后的树文件 (由父脚本统一处理)
+MODIFIED_TREE_DIR="${MAIN_OUTPUT_DIR}/hyphy_modified_trees"
+# 新的目录，用于存放生成的子 sbatch 脚本
+SUB_SBATCH_SCRIPT_DIR="${MAIN_OUTPUT_DIR}/sub_sbatch_scripts"
+# 子作业的输出将直接写入 MAIN_OUTPUT_DIR/BUSTED_json (json本身) 和 MAIN_OUTPUT_DIR/BUSTED_slurm_logs
+BUSTED_JSON_OUTPUT_DIR="${MAIN_OUTPUT_DIR}/BUSTED_json"
+SLURM_LOGS_DIR="${MAIN_OUTPUT_DIR}/BUSTED_slurm_logs"
 
-# 新的目录，用于存放修改后的树文件
-MODIFIED_TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/hyphy_modified_trees"
-
-# 创建输出目录和修改后的树目录 (如果不存在)
-mkdir -p "${OUTPUT_DIR}"
+# --- 创建所需目录 ---
+echo "Creating directories..."
 mkdir -p "${MODIFIED_TREE_DIR}"
+mkdir -p "${SUB_SBATCH_SCRIPT_DIR}"
+mkdir -p "${BUSTED_JSON_OUTPUT_DIR}"
+mkdir -p "${SLURM_LOGS_DIR}"
 
-# 并发控制参数
-# 总共请求了 32 CPUs，每个 hyphy 进程将使用 32 CPUs.
-# 脚本将串行执行，一次一个 hyphy 任务。
-# MAX_JOBS=32 # 不再需要，因为是串行执行
-# job_count=0 # 不再需要
+echo "Starting to generate and submit HyPhy BUSTED sub-jobs..."
 
-echo "Starting HyPhy BUSTED analysis..."
-echo "MSA Directory: ${MSA_DIR}"
-echo "Tree Directory: ${TREE_DIR}"
-echo "Output Directory: ${OUTPUT_DIR}"
-# echo "Max concurrent jobs: ${MAX_JOBS}" # 不再需要
-
+# --- 主循环：遍历MSA文件，预处理树，生成并提交子脚本 ---
 # DEBUG: List all files matching the pattern in MSA_DIR
 echo "DEBUG: Files found in ${MSA_DIR} matching *_codon.clipkit.fasta:"
 ls -1 "${MSA_DIR}"/*_codon.clipkit.fasta 2>/dev/null | tee /dev/stderr | wc -l
 echo "DEBUG: ---- End of file list ----"
 
-# 遍历 MSA 文件 (假设文件以 .fasta 结尾)
-# 用户提供的文件名格式是 OG0002009_codon.clipkit.fasta
-for msa_file in "${MSA_DIR}"/*_codon.clipkit.fasta; do
-    echo "DEBUG: Current msa_file variable is: [$msa_file]"
-    if [ -f "$msa_file" ]; then
-        base_name=$(basename "$msa_file")
-        # 从 "OG0002009_codon.clipkit.fasta" 提取 "OG0002009"
+for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
+    echo "DEBUG: Current msa_file_abs_path variable is: [${msa_file_abs_path}]"
+    if [ -f "${msa_file_abs_path}" ]; then
+        base_name=$(basename "${msa_file_abs_path}")
         gene_id=$(echo "$base_name" | sed 's/_codon\.clipkit\.fasta$//')
 
-        # 构建对应的 tree 文件名
-        # 用户提供的文件名格式是 OG0001125_from_M0_marked.treefile
-        tree_file="${TREE_DIR}/${gene_id}_from_M0_marked.treefile"
-        output_json="${OUTPUT_DIR}/${gene_id}.BUSTED.json"
+        original_tree_file_abs_path="${TREE_DIR}/${gene_id}_from_M0_marked.treefile"
+        # 输出的JSON文件路径 (子脚本将使用此路径)
+        output_json_abs_path="${BUSTED_JSON_OUTPUT_DIR}/${gene_id}.BUSTED.json"
+        # 修改后的树文件路径 (子脚本将使用此路径)
+        modified_tree_file_abs_path="${MODIFIED_TREE_DIR}/${gene_id}_from_M0_marked.treefile"
+        
+        # 子 sbatch 脚本的路径
+        sub_script_path="${SUB_SBATCH_SCRIPT_DIR}/sub_busted_${gene_id}.sh"
 
-        # 为修改后的树文件定义路径
-        modified_tree_file="${MODIFIED_TREE_DIR}/${gene_id}_from_M0_marked.treefile"
-
-        # 检查原始 tree 文件是否存在
-        if [ ! -f "$tree_file" ]; then
-            echo "WARNING: Original tree file not found for ${gene_id}: ${tree_file}. Skipping."
+        # 1. 检查原始 tree 文件是否存在
+        if [ ! -f "${original_tree_file_abs_path}" ]; then
+            echo "WARNING: Original tree file not found for ${gene_id}: ${original_tree_file_abs_path}. Skipping gene."
             continue
         fi
 
-        # 预处理树文件：将 #1 替换为 {foreground}
+        # 2. 预处理树文件 (由父脚本完成)
         echo "Preprocessing tree file for ${gene_id}: Replacing #1 with {foreground}"
-        sed 's/#1/{foreground}/g' "${tree_file}" > "${modified_tree_file}"
-
-        # 检查 sed 是否成功创建了文件 (基本检查)
-        if [ ! -s "${modified_tree_file}" ]; then
-            echo "ERROR: Failed to preprocess tree file for ${gene_id} or modified tree is empty. Original: ${tree_file}. Attempted modified: ${modified_tree_file}. Skipping."
-            # 可以选择删除空的修改文件
-            rm -f "${modified_tree_file}"
+        sed 's/#1/{foreground}/g' "${original_tree_file_abs_path}" > "${modified_tree_file_abs_path}"
+        if [ ! -s "${modified_tree_file_abs_path}" ]; then
+            echo "ERROR: Failed to preprocess tree file for ${gene_id} or modified tree is empty. Original: ${original_tree_file_abs_path}. Skipping gene."
+            rm -f "${modified_tree_file_abs_path}"
             continue
         fi
 
-        echo "Processing ${gene_id}: MSA='${base_name}', Tree='$(basename "${modified_tree_file}")' (modified)"
+        # 3. 生成子 sbatch 脚本内容
+        echo "Generating sbatch script for ${gene_id} at ${sub_script_path}"
+        cat << EOF > "${sub_script_path}"
+#!/bin/bash
+#SBATCH --job-name=busted_${gene_id}
+#SBATCH --partition=short
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --output=${SLURM_LOGS_DIR}/${gene_id}_busted.out
+#SBATCH --error=${SLURM_LOGS_DIR}/${gene_id}_busted.err
 
-        # 运行 HyPhy BUSTED 命令
-        # 使用修改后的树文件和 --branches foreground
-        # 完全串行执行，每个任务使用32CPU，重定向stdin
-        singularity exec "${HYPHY_IMAGE}" hyphy CPU=32 busted --alignment "${msa_file}" --tree "${modified_tree_file}" --output "${output_json}" --branches foreground
+# --- Begin sub-script for ${gene_id} ---
+echo "Running HyPhy BUSTED for ${gene_id}"
+echo "MSA: ${msa_file_abs_path}"
+echo "Tree: ${modified_tree_file_abs_path}"
+echo "Output JSON: ${output_json_abs_path}"
 
-        echo "Finished processing ${gene_id}."
+# Make sure necessary parent directories for output exist (though parent script should create BUSTED_JSON_OUTPUT_DIR)
+mkdir -p "$(dirname "${output_json_abs_path}")"
+
+singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy CPU=1 busted \\
+    --alignment "${msa_file_abs_path}" \\
+    --tree "${modified_tree_file_abs_path}" \\
+    --output "${output_json_abs_path}" \\
+    --code Universal \\
+    --branches foreground < /dev/null
+
+exit_code=$?
+echo "HyPhy BUSTED for ${gene_id} finished with exit code ${exit_code}."
+# --- End sub-script for ${gene_id} ---
+EOF
+
+        # 4. 使子脚本可执行
+        chmod +x "${sub_script_path}"
+
+        # 5. 提交子脚本
+        echo "Submitting sbatch script for ${gene_id}: ${sub_script_path}"
+        sbatch "${sub_script_path}"
+        echo "-----------------------------------------------------"
 
     else
-        echo "Skipping non-file item: ${msa_file}"
+        echo "Skipping non-file item: ${msa_file_abs_path}"
     fi
 done
 
-# 等待所有剩余的后台作业完成 (由于现在是串行，此部分不再需要)
-# echo "All jobs launched. Waiting for remaining jobs to complete..."
-# wait
-echo "All HyPhy BUSTED analyses completed."
-echo "Output files are located in ${OUTPUT_DIR}" 
+echo "All HyPhy BUSTED sub-jobs have been generated and submitted." 
