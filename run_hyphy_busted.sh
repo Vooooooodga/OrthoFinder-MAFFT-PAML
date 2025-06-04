@@ -23,6 +23,7 @@ HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0" # Singularity镜像
 # 如果您的MSA、TREE或OUTPUT目录不在Singularity默认绑定的路径下(如 /home/$USER, /tmp, $PWD),
 # 您需要在这里明确指定绑定。
 # 示例: SINGULARITY_BIND_OPTS="-B /path/to/data_on_host:/data_in_container -B /another/path:/another/path"
+# 对于当前脚本中的路径，如果它们都在 /home/yuhangjia 下，通常不需要额外绑定。
 # 但为了明确和以防万一，您可以绑定一个共同的父目录，例如:
 # SINGULARITY_BIND_OPTS="-B /home/yuhangjia/data:/home/yuhangjia/data"
 SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # Singularity 绑定路径, 根据需要修改, e.g. "-B /path1:/path1 -B /path2:/path2"
@@ -35,16 +36,16 @@ mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${MODIFIED_TREE_DIR}"
 
 # 并发控制参数
-# 总共请求了 32 CPUs，每个 hyphy 进程使用 1 CPUs
-# 所以 MAX_JOBS = 32 / 32 = 1
-MAX_JOBS=32
-job_count=0
+# 总共请求了 32 CPUs，每个 hyphy 进程将使用 32 CPUs.
+# 脚本将串行执行，一次一个 hyphy 任务。
+# MAX_JOBS=32 # 不再需要，因为是串行执行
+# job_count=0 # 不再需要
 
 echo "Starting HyPhy BUSTED analysis..."
 echo "MSA Directory: ${MSA_DIR}"
 echo "Tree Directory: ${TREE_DIR}"
 echo "Output Directory: ${OUTPUT_DIR}"
-echo "Max concurrent jobs: ${MAX_JOBS}"
+# echo "Max concurrent jobs: ${MAX_JOBS}" # 不再需要
 
 # DEBUG: List all files matching the pattern in MSA_DIR
 echo "DEBUG: Files found in ${MSA_DIR} matching *_codon.clipkit.fasta:"
@@ -90,31 +91,18 @@ for msa_file in "${MSA_DIR}"/*_codon.clipkit.fasta; do
 
         # 运行 HyPhy BUSTED 命令
         # 使用修改后的树文件和 --branches foreground
-        # 不使用 -m (messages.log), 单次任务使用32 CPU
-        singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy busted \\
-            --alignment "${msa_file}" \\
-            --tree "${modified_tree_file}" \\
-            --output "${output_json}" \\
-            --code Universal \\
-            --branches foreground < /dev/null &
+        # 完全串行执行，每个任务使用32CPU，重定向stdin
+        singularity exec "${HYPHY_IMAGE}" hyphy CPU=32 busted --alignment "${msa_file}" --tree "${modified_tree_file}" --output "${output_json}" --branches foreground
 
-        job_count=$((job_count + 1))
-        echo "Launched job for ${gene_id}. Current job count: ${job_count}"
+        echo "Finished processing ${gene_id}."
 
-        # 如果达到最大并发作业数，则等待任一作业完成
-        if [ "${job_count}" -ge "${MAX_JOBS}" ]; then
-            echo "Reached max concurrent jobs (${MAX_JOBS}). Waiting for a slot..."
-            wait -n # 等待任何一个后台任务结束
-            job_count=$((job_count - 1)) # 减少计数器，因为一个作业已完成
-            echo "Slot freed. Current job count: ${job_count}"
-        fi
     else
         echo "Skipping non-file item: ${msa_file}"
     fi
 done
 
-# 等待所有剩余的后台作业完成
-echo "All jobs launched. Waiting for remaining jobs to complete..."
-wait
+# 等待所有剩余的后台作业完成 (由于现在是串行，此部分不再需要)
+# echo "All jobs launched. Waiting for remaining jobs to complete..."
+# wait
 echo "All HyPhy BUSTED analyses completed."
 echo "Output files are located in ${OUTPUT_DIR}" 
