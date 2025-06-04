@@ -72,11 +72,10 @@ for msa_file in "${MSA_DIR}"/*_codon.clipkit.fasta; do
         # 运行 HyPhy BUSTED 命令
         # 使用 --CPU 4 来指定每个 hyphy 进程使用的核心数
         # 命令在后台运行 (&)
-        singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy busted \\
+        singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy -m CPU=4 busted \\
             --alignment "${msa_file}" \\
             --tree "${tree_file}" \\
-            --output "${output_json}" \\
-            --CPU 4 < /dev/null &
+            --output "${output_json}" < /dev/null &
 
         job_count=$((job_count + 1))
         echo "Launched job for ${gene_id}. Current job count: ${job_count}"
