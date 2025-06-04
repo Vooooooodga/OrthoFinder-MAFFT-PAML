@@ -4,8 +4,8 @@
 #SBATCH --partition=your_partition # 请替换为您的集群分区名称
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1    # 运行一个主脚本任务
-#SBATCH --cpus-per-task=64     # 为主脚本请求所有CPU，脚本内部管理并发
-#SBATCH --mem=128G             # 根据您的需求调整内存
+#SBATCH --cpus-per-task=32     # 为主脚本请求所有CPU，脚本内部管理并发
+#SBATCH --mem=64G             # 根据您的需求调整内存
 #SBATCH --time=72:00:00        # 根据您的需求调整运行时间
 #SBATCH --output=hyphy_busted_%j.out
 #SBATCH --error=hyphy_busted_%j.err
@@ -35,9 +35,9 @@ mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${MODIFIED_TREE_DIR}"
 
 # 并发控制参数
-# 总共请求了 64 CPUs，每个 hyphy 进程使用 4 CPUs
-# 所以 MAX_JOBS = 64 / 4 = 16
-MAX_JOBS=16
+# 总共请求了 32 CPUs，每个 hyphy 进程使用 1 CPUs
+# 所以 MAX_JOBS = 32 / 32 = 1
+MAX_JOBS=32
 job_count=0
 
 echo "Starting HyPhy BUSTED analysis..."
@@ -90,7 +90,8 @@ for msa_file in "${MSA_DIR}"/*_codon.clipkit.fasta; do
 
         # 运行 HyPhy BUSTED 命令
         # 使用修改后的树文件和 --branches foreground
-        singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy -m CPU=4 busted \\
+        # 不使用 -m (messages.log), 单次任务使用32 CPU
+        singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy busted \\
             --alignment "${msa_file}" \\
             --tree "${modified_tree_file}" \\
             --output "${output_json}" \\
