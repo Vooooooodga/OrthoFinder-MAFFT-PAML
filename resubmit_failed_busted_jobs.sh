@@ -19,7 +19,7 @@ NEW_HYPHY_CPU_COUNT=32 # hyphy 命令内部的 CPU 参数
 RESUBMIT_SCRIPT_DIR="${MAIN_OUTPUT_DIR}/resubmit_scripts"
 mkdir -p "${RESUBMIT_SCRIPT_DIR}" # 创建目录
 
-echo "Starting to check for failed/incomplete jobs and resubmit them (will overwrite original logs, partition unchanged)..."
+echo "Starting to check for non-empty .err files and resubmit corresponding jobs..."
 
 # 遍历 SLURM_LOGS_DIR 中的所有 .err 文件
 find "${SLURM_LOGS_DIR}" -name "*_busted.err" -type f -print0 | while IFS= read -r -d $'\\0' err_file; do
@@ -52,7 +52,7 @@ find "${SLURM_LOGS_DIR}" -name "*_busted.err" -type f -print0 | while IFS= read 
             -e "s/^#SBATCH --cpus-per-task=1/#SBATCH --cpus-per-task=${NEW_CPUS_PER_TASK}/" \
             -e "s/^#SBATCH --mem=4G/#SBATCH --mem=${NEW_MEM}/" \
             -e "s/hyphy CPU=1 busted/hyphy CPU=${NEW_HYPHY_CPU_COUNT} busted/" \
-            "${original_sub_script_path}" > "${resubmit_script_path}" 
+            "${original_sub_script_path}" > "${resubmit_script_path}"
             # 注意移除了修改 partition, job-name, .out, .err 文件名的行
 
         if [ ! -s "${resubmit_script_path}" ]; then
@@ -65,7 +65,7 @@ find "${SLURM_LOGS_DIR}" -name "*_busted.err" -type f -print0 | while IFS= read 
         sbatch "${resubmit_script_path}"
         echo "-----------------------------------------------------"
     else
-        # echo "DEBUG: .err file is empty (or does not exist): ${err_file}" # 可选的调试信息
+        # echo "DEBUG: .err file is empty, skipping: ${err_file}" # 可选的调试信息
         true # 占位符，如果.err文件为空则什么也不做
     fi
 done
