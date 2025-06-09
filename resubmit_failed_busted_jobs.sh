@@ -21,8 +21,15 @@ mkdir -p "${RESUBMIT_SCRIPT_DIR}" # 创建目录
 
 echo "Starting to check for non-empty .err files and resubmit corresponding jobs..."
 
-# 遍历 SLURM_LOGS_DIR 中的所有 .err 文件
-find "${SLURM_LOGS_DIR}" -name "*_busted.err" -type f -print0 | while IFS= read -r -d $'\\0' err_file; do
+# 使用 for 循环作为 find 命令的替代方案进行调试
+for err_file in "${SLURM_LOGS_DIR}"/*_busted.err; do
+    # 这个检查处理没有文件匹配通配符的情况。
+    # 在这种情况下，循环体只会以字面上的字符串（例如 '.../*_busted.err'）执行一次，而这个字符串不是一个存在的文件。
+    if [ ! -f "${err_file}" ]; then
+        echo "Info: No matching .err files found to process."
+        break
+    fi
+    
     # 检查 .err 文件是否非空
     if [ -s "${err_file}" ]; then
         echo "Found non-empty .err file: ${err_file}"
