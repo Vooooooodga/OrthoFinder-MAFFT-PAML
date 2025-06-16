@@ -1,14 +1,14 @@
 #!/bin/bash
 
-#SBATCH --job-name=hyphy_busted_PARENT # 主脚本的作业名
+#SBATCH --job-name=hyphy_busted-ph_PARENT # 主脚本的作业名
 #SBATCH --partition=your_partition      # 主脚本运行的分区 (可能与子作业不同)
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1             # 主脚本本身不需要很多CPU
 #SBATCH --mem=2G                    # 主脚本本身不需要很多内存
 #SBATCH --time=02:00:00               # 主脚本提交作业的时间，根据基因数量调整
-#SBATCH --output=hyphy_busted_parent_%j.out
-#SBATCH --error=hyphy_busted_parent_%j.err
+#SBATCH --output=hyphy_busted-ph_parent_%j.out
+#SBATCH --error=hyphy_busted-ph_parent_%j.err
 
 # 加载 singularity 模块 (如果需要)
 # module load singularity # 取消注释并根据您的集群环境修改
@@ -16,7 +16,7 @@
 # --- 全局定义 ---
 MSA_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/GO_0008380_msa_codon_clipkit_for_paml"
 TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/gene_trees_from_M0_remarked_v2"
-MAIN_OUTPUT_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/BUSTED" # 主输出目录
+MAIN_OUTPUT_DIR="/home/yuhangjia/data/AlternativeSplicing/evo_rate_test_RNA_splicing_term/BUSTED-PH" # 主输出目录
 HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0"
 SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # 根据需要修改
 
@@ -24,18 +24,18 @@ SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # 根据需要修改
 MODIFIED_TREE_DIR="${MAIN_OUTPUT_DIR}/hyphy_modified_trees"
 # 新的目录，用于存放生成的子 sbatch 脚本
 SUB_SBATCH_SCRIPT_DIR="${MAIN_OUTPUT_DIR}/sub_sbatch_scripts"
-# 子作业的输出将直接写入 MAIN_OUTPUT_DIR/BUSTED_json (json本身) 和 MAIN_OUTPUT_DIR/BUSTED_slurm_logs
-BUSTED_JSON_OUTPUT_DIR="${MAIN_OUTPUT_DIR}/BUSTED_json"
-SLURM_LOGS_DIR="${MAIN_OUTPUT_DIR}/BUSTED_slurm_logs"
+# 子作业的输出将直接写入 MAIN_OUTPUT_DIR/BUSTED-PH_json (json本身) 和 MAIN_OUTPUT_DIR/BUSTED-PH_slurm_logs
+BUSTED_PH_JSON_OUTPUT_DIR="${MAIN_OUTPUT_DIR}/BUSTED-PH_json"
+SLURM_LOGS_DIR="${MAIN_OUTPUT_DIR}/BUSTED-PH_slurm_logs"
 
 # --- 创建所需目录 ---
 echo "Creating directories..."
 mkdir -p "${MODIFIED_TREE_DIR}"
 mkdir -p "${SUB_SBATCH_SCRIPT_DIR}"
-mkdir -p "${BUSTED_JSON_OUTPUT_DIR}"
+mkdir -p "${BUSTED_PH_JSON_OUTPUT_DIR}"
 mkdir -p "${SLURM_LOGS_DIR}"
 
-echo "Starting to generate and submit HyPhy BUSTED sub-jobs..."
+echo "Starting to generate and submit HyPhy BUSTED-PH sub-jobs..."
 
 # --- 主循环：遍历MSA文件，预处理树，生成并提交子脚本 ---
 # DEBUG: List all files matching the pattern in MSA_DIR
@@ -51,12 +51,12 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
 
         original_tree_file_abs_path="${TREE_DIR}/${gene_id}_from_M0_marked.treefile"
         # 输出的JSON文件路径 (子脚本将使用此路径)
-        output_json_abs_path="${BUSTED_JSON_OUTPUT_DIR}/${gene_id}.BUSTED.json"
+        output_json_abs_path="${BUSTED_PH_JSON_OUTPUT_DIR}/${gene_id}.BUSTED-PH.json"
         # 修改后的树文件路径 (子脚本将使用此路径)
         modified_tree_file_abs_path="${MODIFIED_TREE_DIR}/${gene_id}_from_M0_marked.treefile"
         
         # 子 sbatch 脚本的路径
-        sub_script_path="${SUB_SBATCH_SCRIPT_DIR}/sub_busted_${gene_id}.sh"
+        sub_script_path="${SUB_SBATCH_SCRIPT_DIR}/sub_busted-ph_${gene_id}.sh"
 
         # 1. 检查原始 tree 文件是否存在
         if [ ! -f "${original_tree_file_abs_path}" ]; then
@@ -77,25 +77,25 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
         echo "Generating sbatch script for ${gene_id} at ${sub_script_path}"
         cat << EOF > "${sub_script_path}"
 #!/bin/bash
-#SBATCH --job-name=busted_${gene_id}
+#SBATCH --job-name=busted-ph_${gene_id}
 #SBATCH --partition=short
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --output=${SLURM_LOGS_DIR}/${gene_id}_busted.out
-#SBATCH --error=${SLURM_LOGS_DIR}/${gene_id}_busted.err
+#SBATCH --output=${SLURM_LOGS_DIR}/${gene_id}_busted-ph.out
+#SBATCH --error=${SLURM_LOGS_DIR}/${gene_id}_busted-ph.err
 
 # --- Begin sub-script for ${gene_id} ---
-echo "Running HyPhy BUSTED for ${gene_id}"
+echo "Running HyPhy BUSTED-PH for ${gene_id}"
 echo "MSA: ${msa_file_abs_path}"
 echo "Tree: ${modified_tree_file_abs_path}"
 echo "Output JSON: ${output_json_abs_path}"
 
-# Make sure necessary parent directories for output exist (though parent script should create BUSTED_JSON_OUTPUT_DIR)
+# Make sure necessary parent directories for output exist (though parent script should create BUSTED_PH_JSON_OUTPUT_DIR)
 mkdir -p "$(dirname "${output_json_abs_path}")"
 
-singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy CPU=1 busted \\
+singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy CPU=1 busted BUSTED-PH.bf \\
     --alignment "${msa_file_abs_path}" \\
     --tree "${modified_tree_file_abs_path}" \\
     --output "${output_json_abs_path}" \\
@@ -103,7 +103,7 @@ singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy CPU=1 busted \\
     --branches foreground < /dev/null
 
 exit_code=$?
-echo "HyPhy BUSTED for ${gene_id} finished with exit code ${exit_code}."
+echo "HyPhy BUSTED-PH for ${gene_id} finished with exit code ${exit_code}."
 # --- End sub-script for ${gene_id} ---
 EOF
 
@@ -120,4 +120,4 @@ EOF
     fi
 done
 
-echo "All HyPhy BUSTED sub-jobs have been generated and submitted." 
+echo "All HyPhy BUSTED-PH sub-jobs have been generated and submitted." 
