@@ -15,9 +15,9 @@
 
 # --- 全局定义 ---
 # TODO: 用户需要根据实际情况修改以下路径
-MSA_DIR="/home/yuhangjia/data/AlternativeSplicing/hyphy_relax"  # 假设MSA文件与RELAX使用相同的目录
-TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/hyphy_relax" # 假设树文件与RELAX使用相同的目录
-MAIN_OUTPUT_DIR_MEME="/home/yuhangjia/data/AlternativeSplicing/hyphy_meme/results" # 主输出目录 for MEME
+MSA_DIR="/home/yuhangjia/data/AlternativeSplicing/9_overlap_DAS_evo_rate_analysis/DAS_aligned_codon_clipkit_for_paml"  
+TREE_DIR="/home/yuhangjia/data/AlternativeSplicing/9_overlap_DAS_evo_rate_analysis/gene_trees_from_M0_remarked_v2" 
+MAIN_OUTPUT_DIR_MEME="/home/yuhangjia/data/AlternativeSplicing/9_overlap_DAS_evo_rate_analysis/MEME" # 主输出目录 for MEME
 HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0" # HyPhy singularity 镜像路径
 SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # 根据需要修改 Singularity 绑定路径
 
@@ -66,9 +66,9 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
             continue
         fi
 
-        # 2. MEME 不需要对树文件进行 RELAX 那样的特定预处理 (如替换 #1 为 {test})
-        #    我们将直接使用 original_tree_file_abs_path
-        #    修改：为MEME生成一个不包含前景标记的树文件
+        # 2. 为 MEME 准备输入树文件.
+        #    MEME分析的输入树不应包含前景分支标记 (如 #1).
+        #    因此, 我们将从原始树文件中移除这些标记, 并生成一个新的、无标记的树文件.
         echo "Preparing unmarked tree file for ${gene_id} (MEME)..."
         echo "Original (marked) tree: ${original_tree_file_abs_path}"
         # 移除类似 #1, #2 等标记
