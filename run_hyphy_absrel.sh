@@ -20,6 +20,8 @@ MAIN_OUTPUT_DIR="/home/yuhangjia/data/AlternativeSplicing/9_overlap_DAS_evo_rate
 HYPHY_IMAGE="/usr/local/biotools/h/hyphy:2.5.65--he91c24d_0"
 SINGULARITY_BIND_OPTS="-B /lustre10:/lustre10" # 根据需要修改
 
+# 新的目录，用于存放修改后的树文件 (由父脚本统一处理)
+MODIFIED_TREE_DIR="${MAIN_OUTPUT_DIR}/hyphy_modified_trees"
 # 新的目录，用于存放生成的子 sbatch 脚本
 SUB_SBATCH_SCRIPT_DIR="${MAIN_OUTPUT_DIR}/sub_sbatch_scripts"
 # 子作业的输出将直接写入 MAIN_OUTPUT_DIR/aBSREL_json (json本身) 和 MAIN_OUTPUT_DIR/aBSREL_slurm_logs
@@ -28,6 +30,7 @@ SLURM_LOGS_DIR="${MAIN_OUTPUT_DIR}/aBSREL_slurm_logs"
 
 # --- 创建所需目录 ---
 echo "Creating directories..."
+mkdir -p "${MODIFIED_TREE_DIR}"
 mkdir -p "${SUB_SBATCH_SCRIPT_DIR}"
 mkdir -p "${ABSREL_JSON_OUTPUT_DIR}"
 mkdir -p "${SLURM_LOGS_DIR}"
@@ -43,6 +46,8 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
         original_tree_file_abs_path="${TREE_DIR}/${gene_id}_from_M0_marked.treefile"
         # 输出的JSON文件路径 (子脚本将使用此路径)
         output_json_abs_path="${ABSREL_JSON_OUTPUT_DIR}/${gene_id}.aBSREL.json"
+        # 修改后的树文件路径 (子脚本将使用此路径)
+        modified_tree_file_abs_path="${MODIFIED_TREE_DIR}/${gene_id}_from_M0_marked.treefile"
         
         # 子 sbatch 脚本的路径
         sub_script_path="${SUB_SBATCH_SCRIPT_DIR}/sub_absrel_${gene_id}.sh"
@@ -53,7 +58,16 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
             continue
         fi
 
-        # 2. 生成子 sbatch 脚本内容
+        # 2. 预处理树文件 (由父脚本完成)
+        echo "Preprocessing tree file for ${gene_id}: Removing #1 tag"
+        sed 's/#1//g' "${original_tree_file_abs_path}" > "${modified_tree_file_abs_path}"
+        if [ ! -s "${modified_tree_file_abs_path}" ]; then
+            echo "ERROR: Failed to preprocess tree file for ${gene_id} or modified tree is empty. Original: ${original_tree_file_abs_path}. Skipping gene."
+            rm -f "${modified_tree_file_abs_path}"
+            continue
+        fi
+
+        # 3. 生成子 sbatch 脚本内容
         echo "Generating sbatch script for ${gene_id} at ${sub_script_path}"
         cat << EOF > "${sub_script_path}"
 #!/bin/bash
@@ -69,7 +83,7 @@ for msa_file_abs_path in "${MSA_DIR}"/*_codon.clipkit.fasta; do
 # --- Begin sub-script for ${gene_id} ---
 echo "Running HyPhy aBSREL for ${gene_id}"
 echo "MSA: ${msa_file_abs_path}"
-echo "Tree: ${original_tree_file_abs_path}"
+echo "Tree: ${modified_tree_file_abs_path}"
 echo "Output JSON: ${output_json_abs_path}"
 
 # Make sure necessary parent directories for output exist
@@ -77,7 +91,7 @@ mkdir -p "$(dirname "${output_json_abs_path}")"
 
 singularity exec ${SINGULARITY_BIND_OPTS} "${HYPHY_IMAGE}" hyphy CPU=32 aBSREL \\
     --alignment "${msa_file_abs_path}" \\
-    --tree "${original_tree_file_abs_path}" \\
+    --tree "${modified_tree_file_abs_path}" \\
     --branches All \\
     --output "${output_json_abs_path}" \\
     --code Universal < /dev/null
@@ -87,10 +101,10 @@ echo "HyPhy aBSREL for ${gene_id} finished with exit code ${exit_code}."
 # --- End sub-script for ${gene_id} ---
 EOF
 
-        # 3. 使子脚本可执行
+        # 4. 使子脚本可执行
         chmod +x "${sub_script_path}"
 
-        # 4. 提交子脚本
+        # 5. 提交子脚本
         echo "Submitting sbatch script for ${gene_id}: ${sub_script_path}"
         sbatch "${sub_script_path}"
         echo "-----------------------------------------------------"
