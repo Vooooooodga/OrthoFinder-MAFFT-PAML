@@ -14,16 +14,20 @@ set -o pipefail # 管道中的任何命令失败都算作失败
 ulimit -s unlimited
 
 # --- 关键检查 ---
-# 获取脚本所在的目录，以确保我们总能找到位于同一目录下的文件列表
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-file_list="${SCRIPT_DIR}/mafft_input_files.list"
+# SLURM 会将 sbatch 提交时的目录路径存储在 SLURM_SUBMIT_DIR 变量中。
+# 我们用这个变量来定位 mafft_input_files.list 文件，这比脚本自身路径更可靠。
+if [ -z "$SLURM_SUBMIT_DIR" ]; then
+    echo "错误：环境变量 SLURM_SUBMIT_DIR 未设置。" >&2
+    echo "这通常意味着脚本没有通过 sbatch 正确提交。" >&2
+    exit 1
+fi
+file_list="${SLURM_SUBMIT_DIR}/mafft_input_files.list"
 
 # 在脚本早期就检查文件列表是否存在，如果不存在则快速失败并给出提示
 if [ ! -f "$file_list" ]; then
-    echo "错误：在脚本目录中找不到输入文件列表 '$file_list'！" >&2
-    echo "请确保 'mafft_input_files.list' 文件与您的 sbatch 脚本位于同一目录。" >&2
-    echo "您可以在该目录中运行以下命令来创建它：" >&2
-    echo 'find "$(pwd)/translated_proteins" -type f -name "*.fa" > mafft_input_files.list' >&2
+    echo "错误：在提交目录中找不到输入文件列表 '$file_list'！" >&2
+    echo "请确保 'mafft_input_files.list' 文件与您当初运行 sbatch 命令的目录位于同一位置。" >&2
+    echo "您可以在那个目录中运行 'find \"\$(pwd)\"/translated_proteins -type f -name \"*.fa\" > mafft_input_files.list' 来创建它。" >&2
     exit 1
 fi
 
