@@ -1,4 +1,7 @@
 #!/bin/bash
+set -e # 任何命令失败时立即退出
+set -o pipefail # 管道中的任何命令失败都算作失败
+
 #SBATCH --job-name=mafft-array
 #SBATCH --output=logs/mafft_array_%A_%a.out
 #SBATCH --error=logs/mafft_array_%A_%a.err
@@ -13,6 +16,16 @@ echo "Running on $(hostname)"
 echo "Starting at $(date)"
 echo "SLURM_JOB_ID: $SLURM_JOB_ID, SLURM_ARRAY_JOB_ID: $SLURM_ARRAY_JOB_ID, SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 
+# --- 关键检查 ---
+# 在脚本早期就检查文件列表是否存在，如果不存在则快速失败并给出提示
+file_list="mafft_input_files.list"
+if [ ! -f "$file_list" ]; then
+    echo "错误：找不到输入文件列表 '$file_list'！" >&2
+    echo "请在提交任务的目录中运行以下命令来创建它：" >&2
+    echo 'find "$(pwd)/translated_proteins" -type f -name "*.fa" > mafft_input_files.list' >&2
+    exit 1
+fi
+
 # 输入和输出目录定义
 input="./translated_proteins"
 output="./aligned_translated_proteins"
@@ -21,27 +34,28 @@ CORES_PER_MAFFT_JOB=4 # 与 --cpus-per-task 保持一致
 # 确保输出目录存在
 mkdir -p $output
 
-# 获取所有输入文件的列表
-files=($input/*.fa)
-total_files=${#files[@]}
+# 从预先生成的文件列表中读取要处理的文件
+# 注意：需要提前运行 'find "$(pwd)/translated_proteins" -type f -name "*.fa" > mafft_input_files.list'
+total_files=$(wc -l < "$file_list")
 
 if [ "$total_files" -eq 0 ]; then
-    echo "No .fa files found in $input. Exiting."
-    exit 0
+    echo "Input file list '$file_list' is empty or not found. Exiting."
+    exit 1
 fi
 
-# 从数组中选择当前任务要处理的文件
-# SLURM_ARRAY_TASK_ID 从 1 开始，而 bash 数组索引从 0 开始
+# SLURM_ARRAY_TASK_ID 从 1 开始
 task_id=${SLURM_ARRAY_TASK_ID}
-file_index=$((task_id - 1))
 
 # 检查任务ID是否在文件列表范围内
-if [ "$file_index" -ge "$total_files" ]; then
+if [ "$task_id" -gt "$total_files" ]; then
     echo "Task ID $task_id is out of bounds. Total files: $total_files. Exiting."
+    # 在这种情况下通常什么都不做，让任务安静退出
     exit 0
 fi
 
-file_to_process=${files[$file_index]}
+# 使用 sed 命令从文件列表中获取当前任务对应的文件路径
+file_to_process=$(sed -n "${task_id}p" "$file_list")
+
 base_name=$(basename "${file_to_process%.fa}")
 
 # --- 日志重定向 ---
@@ -57,7 +71,7 @@ echo "Running on $(hostname)"
 echo "Starting at $(date)"
 
 echo "Processing file $task_id of $total_files: $file_to_process"
-outfile="$output/$(basename "${file_to_process%.fa}")_aligned.fa"
+outfile="$output/${base_name}_aligned.fa"
 echo "Output will be saved to $outfile"
 
 # 运行MAFFT
