@@ -1,88 +1,83 @@
 #!/bin/bash
-set -e # 任何命令失败时立即退出
-set -o pipefail # 管道中的任何命令失败都算作失败
-
 #SBATCH --job-name=mafft-array
-#SBATCH --output=logs/mafft_array_%A_%a.out
-#SBATCH --error=logs/mafft_array_%A_%a.err
-#SBATCH --array=1-8378 # 请根据 translated_proteins 目录中实际的 .fa 文件数量调整此处的数字
+#SBATCH --array=1-8378  # 重要提示：请将此处的数字修改为您文件的确切总数
+#SBATCH --output=logs/slurm-%A_%a.out  # SLURM自身的基础日志
+#SBATCH --error=logs/slurm-%A_%a.err   # SLURM自身的基础错误日志
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --cpus-per-task=4 # 每个子任务需要4个核心
-#SBATCH --mem=4G          # 每个子任务需要4G内存
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=4G
 
-ulimit -s unlimited
+# --- 使用说明 ---
+#
+# 此脚本通过SLURM作业数组高效运行成千上万个MAFFT任务。
+#
+# 操作仅需两步:
+#
+# 1.【提交前】创建任务清单：
+#   在终端运行以下命令，生成一个包含所有输入文件路径的清单。
+#   (请在您存放 translated_proteins 目录的位置运行此命令)
+#
+#   find "$(pwd)/translated_proteins" -type f -name "*.fa" > mafft_input_files.list
+#
+# 2.【提交任务】
+#   sbatch 5.run_MAFFT_for_aa_msa.sh
+#
+# --- 脚本正文 ---
 
-# --- 关键检查 ---
-# SLURM 会将 sbatch 提交时的目录路径存储在 SLURM_SUBMIT_DIR 变量中。
-# 我们用这个变量来定位 mafft_input_files.list 文件，这比脚本自身路径更可靠。
-if [ -z "$SLURM_SUBMIT_DIR" ]; then
-    echo "错误：环境变量 SLURM_SUBMIT_DIR 未设置。" >&2
-    echo "这通常意味着脚本没有通过 sbatch 正确提交。" >&2
+# 任何命令失败时立即退出，增加脚本的健壮性
+set -e
+
+# --- 配置 ---
+# 定义输出比对结果的目录
+OUTPUT_DIR="./aligned_translated_proteins"
+# 定义存放每个任务详细日志的目录
+LOG_DIR="./logs"
+# 定义任务清单文件的位置。$SLURM_SUBMIT_DIR是SLURM提供的变量，指向您运行sbatch的目录。
+FILE_LIST="${SLURM_SUBMIT_DIR}/mafft_input_files.list"
+
+# --- 环境设置 ---
+# 确保输出和日志目录存在
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$LOG_DIR"
+
+# --- 核心执行逻辑 ---
+# 1. 从SLURM获取当前子任务的唯一编号
+TASK_ID=${SLURM_ARRAY_TASK_ID}
+
+# 2. 根据任务编号，从任务清单中精确取出当前任务需要处理的文件路径
+#    sed -n "${TASK_ID}p" 的作用是打印清单文件中的第 N 行，N就是任务编号
+INPUT_FILE=$(sed -n "${TASK_ID}p" "$FILE_LIST")
+
+# 3. 检查是否成功获取了文件路径
+if [ -z "$INPUT_FILE" ]; then
+    echo "错误：未能从任务清单 '$FILE_LIST' 的第 $TASK_ID 行获取到文件名。" >&2
+    echo "请检查您的 --array 范围是否正确。" >&2
     exit 1
 fi
-file_list="${SLURM_SUBMIT_DIR}/mafft_input_files.list"
 
-# 在脚本早期就检查文件列表是否存在，如果不存在则快速失败并给出提示
-if [ ! -f "$file_list" ]; then
-    echo "错误：在提交目录中找不到输入文件列表 '$file_list'！" >&2
-    echo "请确保 'mafft_input_files.list' 文件与您当初运行 sbatch 命令的目录位于同一位置。" >&2
-    echo "您可以在那个目录中运行 'find \"\$(pwd)\"/translated_proteins -type f -name \"*.fa\" > mafft_input_files.list' 来创建它。" >&2
-    exit 1
-fi
+# 4. 根据输入文件名，生成一个干净的文件前缀 (例如：OG0007311)
+BASENAME=$(basename "$INPUT_FILE" .fa)
 
-echo "Running on $(hostname)"
-echo "Starting at $(date)"
+# 5. 定义此任务专属的日志文件和输出文件
+LOG_FILE="${LOG_DIR}/${BASENAME}.log"
+OUTPUT_FILE="${OUTPUT_DIR}/${BASENAME}_aligned.fa"
 
-# 输入和输出目录定义
-output="./aligned_translated_proteins"
-CORES_PER_MAFFT_JOB=4 # 与 --cpus-per-task 保持一致
+# 6. 将此任务的所有后续输出（标准输出和错误输出）重定向到它自己的日志文件中
+exec > "$LOG_FILE" 2>&1
 
-# 确保输出目录存在
-mkdir -p $output
-mkdir -p logs
+# --- 记录任务信息 ---
+echo "--- MAFFT 子任务启动 ---"
+echo "主机名: $(hostname)"
+echo "任务编号 (Task ID): ${TASK_ID}"
+echo "处理文件: ${INPUT_FILE}"
+echo "结果输出至: ${OUTPUT_FILE}"
+echo "日志记录至: ${LOG_FILE}"
+echo "--------------------------"
 
-# 从预先生成的文件列表中读取要处理的文件
-total_files=$(wc -l < "$file_list")
+# 7. 执行MAFFT比对
+#    --thread 参数直接使用SLURM分配的CPU核心数，无需手动指定
+singularity exec /usr/local/biotools/m/mafft:7.525--h031d066_0 mafft --auto --thread "$SLURM_CPUS_PER_TASK" "$INPUT_FILE" > "$OUTPUT_FILE"
 
-if [ "$total_files" -eq 0 ]; then
-    echo "Input file list '$file_list' is empty or not found. Exiting."
-    exit 1
-fi
-
-# SLURM_ARRAY_TASK_ID 从 1 开始
-task_id=${SLURM_ARRAY_TASK_ID}
-
-# 检查任务ID是否在文件列表范围内
-if [ -z "$task_id" ]; then
-    echo "错误: SLURM_ARRAY_TASK_ID 变量为空。请确认您是通过 'sbatch' 命令提交的作业数组。" >&2
-    exit 1
-elif [ "$task_id" -gt "$total_files" ]; then
-    echo "Task ID $task_id is out of bounds. Total files: $total_files. Exiting."
-    exit 0
-fi
-
-# 使用 sed 命令从文件列表中获取当前任务对应的文件路径
-file_to_process=$(sed -n "${task_id}p" "$file_list")
-base_name=$(basename "${file_to_process%.fa}")
-
-# --- 日志重定向 ---
-# 将此任务的 stdout 和 stderr 重定向到与输入文件同名的日志文件中
-exec > "logs/${base_name}.out" 2> "logs/${base_name}.err"
-
-echo "SLURM Job ID: ${SLURM_JOB_ID}"
-echo "SLURM Array Job ID: ${SLURM_ARRAY_JOB_ID}"
-echo "SLURM Array Task ID: ${SLURM_ARRAY_TASK_ID}"
-echo "----------------------------------------------------"
-echo "Running on $(hostname)"
-echo "Starting at $(date)"
-
-echo "Processing file $task_id of $total_files: $file_to_process"
-outfile="$output/${base_name}_aligned.fa"
-echo "Output will be saved to $outfile"
-
-# 运行MAFFT
-singularity exec /usr/local/biotools/m/mafft:7.525--h031d066_0 mafft --auto --thread $CORES_PER_MAFFT_JOB "$file_to_process" > "$outfile"
-
-echo "MAFFT job for $file_to_process completed."
-echo "Ending at $(date)"
+echo "--- MAFFT 子任务完成 ---"
+echo "结束时间: $(date)"
