@@ -1,74 +1,67 @@
 #!/bin/bash
-#SBATCH --job-name=mafft
-#SBATCH --output=mafft_%j.out
-#SBATCH --error=mafft_%j.err
+#SBATCH --job-name=mafft-array
+#SBATCH --output=logs/mafft_array_%A_%a.out
+#SBATCH --error=logs/mafft_array_%A_%a.err
+#SBATCH --array=1-8378 # 请根据 translated_proteins 目录中实际的 .fa 文件数量调整此处的数字
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=4 # 每个子任务需要4个核心
+#SBATCH --mem=4G          # 每个子任务需要4G内存
 
 ulimit -s unlimited
 echo "Running on $(hostname)"
 echo "Starting at $(date)"
+echo "SLURM_JOB_ID: $SLURM_JOB_ID, SLURM_ARRAY_JOB_ID: $SLURM_ARRAY_JOB_ID, SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 
 # 输入和输出目录定义
-input="./translated_proteins_deg"
-output="./aligned_translated_proteins_deg"
-
-# 并行处理参数
-# 从SBATCH指令中获取总CPU核心数 (或者直接使用SLURM_CPUS_PER_TASK)
-# 这里我们根据脚本中的 #SBATCH --cpus-per-task=16 来设定
-TOTAL_CPUS_ALLOCATED=32
-CORES_PER_MAFFT_JOB=4
-MAX_CONCURRENT_JOBS=$((TOTAL_CPUS_ALLOCATED / CORES_PER_MAFFT_JOB))
-
-echo "Total CPUs allocated: $TOTAL_CPUS_ALLOCATED"
-echo "Cores per MAFFT job: $CORES_PER_MAFFT_JOB"
-echo "Maximum concurrent MAFFT jobs: $MAX_CONCURRENT_JOBS"
+input="./translated_proteins"
+output="./aligned_translated_proteins"
+CORES_PER_MAFFT_JOB=4 # 与 --cpus-per-task 保持一致
 
 # 确保输出目录存在
 mkdir -p $output
 
-# 检查输入文件
-echo "Checking input files in $input:"
-ls $input
-
-# 为目录中的每个文件运行MAFFT
-active_jobs=0
-file_count=0
-total_files=$(ls $input/*.fa 2>/dev/null | wc -l)
+# 获取所有输入文件的列表
+files=($input/*.fa)
+total_files=${#files[@]}
 
 if [ "$total_files" -eq 0 ]; then
     echo "No .fa files found in $input. Exiting."
     exit 0
 fi
 
-echo "Found $total_files files to process."
+# 从数组中选择当前任务要处理的文件
+# SLURM_ARRAY_TASK_ID 从 1 开始，而 bash 数组索引从 0 开始
+task_id=${SLURM_ARRAY_TASK_ID}
+file_index=$((task_id - 1))
 
-for file in $input/*.fa; do
-    ((file_count++))
-    echo "Processing file $file_count of $total_files: $file..."
-    outfile="$output/$(basename "${file%.fa}")_aligned.fa"
-    echo "Output will be saved to $outfile"
-    
-    # 以后台方式运行MAFFT
-    singularity exec /usr/local/biotools/m/mafft:7.525--h031d066_0 mafft --auto --thread $CORES_PER_MAFFT_JOB "$file" > "$outfile" &
-    
-    ((active_jobs++))
-    echo "Launched job for $file. Active jobs: $active_jobs."
+# 检查任务ID是否在文件列表范围内
+if [ "$file_index" -ge "$total_files" ]; then
+    echo "Task ID $task_id is out of bounds. Total files: $total_files. Exiting."
+    exit 0
+fi
 
-    # 如果活动的作业数达到最大并发数，则等待一个作业完成
-    if [[ "$active_jobs" -ge "$MAX_CONCURRENT_JOBS" ]]; then
-        echo "Reached maximum concurrent jobs ($MAX_CONCURRENT_JOBS). Waiting for a job to finish..."
-        wait -n
-        ((active_jobs--))
-        echo "A job finished. Active jobs: $active_jobs."
-    fi
-done
+file_to_process=${files[$file_index]}
+base_name=$(basename "${file_to_process%.fa}")
 
-# 等待所有剩余的后台作业完成
-echo "All MAFFT jobs launched. Waiting for remaining jobs to complete..."
-wait
-echo "All MAFFT jobs have completed."
+# --- 日志重定向 ---
+# 将此任务的 stdout 和 stderr 重定向到与输入文件同名的日志文件中
+# 注意：这之后的 echo 和其他命令的输出都会进入新文件
+exec > "logs/${base_name}.out" 2> "logs/${base_name}.err"
 
+echo "SLURM Job ID: ${SLURM_JOB_ID}"
+echo "SLURM Array Job ID: ${SLURM_ARRAY_JOB_ID}"
+echo "SLURM Array Task ID: ${SLURM_ARRAY_TASK_ID}"
+echo "----------------------------------------------------"
+echo "Running on $(hostname)"
+echo "Starting at $(date)"
+
+echo "Processing file $task_id of $total_files: $file_to_process"
+outfile="$output/$(basename "${file_to_process%.fa}")_aligned.fa"
+echo "Output will be saved to $outfile"
+
+# 运行MAFFT
+singularity exec /usr/local/biotools/m/mafft:7.525--h031d066_0 mafft --auto --thread $CORES_PER_MAFFT_JOB "$file_to_process" > "$outfile"
+
+echo "MAFFT job for $file_to_process completed."
 echo "Ending at $(date)"
