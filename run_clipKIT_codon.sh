@@ -1,110 +1,88 @@
 #!/bin/bash
-#SBATCH --job-name=clipkit_trim
-#SBATCH --output=clipkit_trim_%j.out
-#SBATCH --error=clipkit_trim_%j.err
+#SBATCH --job-name=clipkit-array
+#SBATCH --array=1-8378  # 重要提示：请将此处的数字修改为您.aln文件的确切总数
+#SBATCH --output=logs/clipkit_slurm-%A_%a.out  # SLURM自身的基础日志
+#SBATCH --error=logs/clipkit_slurm-%A_%a.err   # SLURM自身的基础错误日志
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=1  # ClipKIT通常是单线程的，1个核心足够
+#SBATCH --mem=2G
 
-# 定义每个ClipKIT任务使用的CPU核心数
-CPUS_PER_TASK=4
+# --- 使用说明 ---
+#
+# 此脚本通过SLURM作业数组高效运行成千上万个ClipKIT任务。
+#
+# 操作仅需两步:
+#
+# 1.【提交前】创建任务清单：
+#   在终端运行以下命令，生成一个包含所有输入文件路径的清单。
+#   (请在您存放 SCOGs_msa_codon 目录的位置运行此命令)
+#
+#   find "$(pwd)/SCOGs_msa_codon" -type f -name "*.aln" > clipkit_input_files.list
+#
+# 2.【提交任务】
+#   sbatch run_clipKIT_codon.sh
+#
+# --- 脚本正文 ---
 
-ulimit -s unlimited
-echo "Running on $(hostname)"
-echo "Starting at $(date)"
+# 任何命令失败时立即退出，增加脚本的健壮性
+set -e
 
-# 定义Singularity命令前缀
+# --- 配置 ---
+# 定义输出修剪后文件的目录
+OUTPUT_DIR="./aligned_codon_clipkit_70_coverage"
+# 定义存放每个任务详细日志的目录
+LOG_DIR="./logs"
+# 定义任务清单文件的位置。$SLURM_SUBMIT_DIR是SLURM提供的变量，指向您运行sbatch的目录。
+FILE_LIST="${SLURM_SUBMIT_DIR}/clipkit_input_files.list"
+# 定义Singularity命令
 CLIPKIT_CMD="singularity exec /usr/local/biotools/c/clipkit:2.3.0--pyhdfd78af_0 clipkit"
 
-# 输入和输出目录定义
-input_dir="./SCOGs_msa_codon"
-output_dir="./SCOGs_msa_codon_clipkit" # 修剪后的FASTA文件将存放在新目录中
 
-# 确保输出目录存在
-mkdir -p "$output_dir"
+# --- 环境设置 ---
+# 确保输出和日志目录存在
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$LOG_DIR"
 
-# 检查输入目录是否存在且包含文件
-if [ ! -d "$input_dir" ]; then
-    echo "Error: Input directory $input_dir does not exist."
+# --- 核心执行逻辑 ---
+# 1. 从SLURM获取当前子任务的唯一编号
+TASK_ID=${SLURM_ARRAY_TASK_ID}
+
+# 2. 根据任务编号，从任务清单中精确取出当前任务需要处理的文件路径
+INPUT_FILE=$(sed -n "${TASK_ID}p" "$FILE_LIST")
+
+# 3. 检查是否成功获取了文件路径
+if [ -z "$INPUT_FILE" ]; then
+    echo "错误：未能从任务清单 '$FILE_LIST' 的第 $TASK_ID 行获取到文件名。" >&2
+    echo "请检查您的 --array 范围是否正确，以及清单文件是否存在。" >&2
     exit 1
 fi
 
-# 使用 shopt -s nullglob 使得在没有匹配文件时，通配符扩展为空，而不是保留通配符本身
-shopt -s nullglob
-files_to_process=("$input_dir"/*.aln)
-shopt -u nullglob # (可选) 如果后续脚本部分不需要此行为，可以取消设置
+# 4. 根据输入文件名，生成一个干净的文件前缀 (例如：OG0006709_codon)
+BASENAME=$(basename "$INPUT_FILE" .aln)
 
-# 检查是否找到了 .aln 文件
-if [ ${#files_to_process[@]} -eq 0 ]; then
-    echo "Error: No .aln files found in $input_dir"
-    exit 1
-fi
+# 5. 定义此任务专属的日志文件和输出文件
+LOG_FILE="${LOG_DIR}/${BASENAME}.clipkit.log"
+OUTPUT_FILE="${OUTPUT_DIR}/${BASENAME}.clipkit.fasta"
 
-echo "Found ${#files_to_process[@]} .aln files to process in $input_dir:"
+# 6. 将此任务的所有后续输出（标准输出和错误输出）重定向到它自己的日志文件中
+exec > "$LOG_FILE" 2>&1
 
-# 获取总可用CPU核心数
-TOTAL_CPUS=$(nproc)
-# 计算可以同时运行的最大作业数
-MAX_PARALLEL_JOBS=$((TOTAL_CPUS / CPUS_PER_TASK))
-echo "Total available CPUs: $TOTAL_CPUS"
-echo "CPUs per task: $CPUS_PER_TASK"
-echo "Maximum parallel jobs: $MAX_PARALLEL_JOBS"
+# --- 记录任务信息 ---
+echo "--- ClipKIT 子任务启动 ---"
+echo "主机名: $(hostname)"
+echo "任务编号 (Task ID): ${TASK_ID}"
+echo "处理文件: ${INPUT_FILE}"
+echo "结果输出至: ${OUTPUT_FILE}"
+echo "日志记录至: ${LOG_FILE}"
+echo "--------------------------"
 
-# 为目录中的每个 .aln 文件运行 ClipKIT
-job_count=0
-for file_path in "${files_to_process[@]}"; do
-    # 再次确认是文件 (通常nullglob后不需要，但作为安全检查)
-    if [ -f "$file_path" ]; then
-        filename=$(basename "$file_path")
-        # 构建输出文件名，例如：OG0006709_codon.clipkit.fasta
-        base_name_no_ext=$(basename "${filename%.aln}") # 去除 .aln 后缀
-        outfile="$output_dir/${base_name_no_ext}.clipkit.fasta"
+# 7. 执行ClipKIT修剪
+#    -m kpic-smart-gap: 保留简约性信息位点和恒定位点，并使用智能空位算法修剪
+#    -co: 密码子模式，确保以完整密码子为单位修剪
+#    -l: 生成日志文件 (与输出文件同名，但后缀为 .log)
+#    -of fasta: 指定输出文件格式为FASTA
+${CLIPKIT_CMD} "$INPUT_FILE" -o "$OUTPUT_FILE" -m gappy -g 0.3 -co -l -of fasta
 
-        echo "Processing $filename ..."
-        echo "Input: $file_path"
-        echo "Output will be saved to $outfile (FASTA format)"
-
-        # 构建CPU亲和性掩码，这里我们简单地分配连续的CPU核心
-        # 注意：这种分配方式在高负载或复杂NUMA架构下可能不是最优的
-        # 但对于多数情况是一个合理的起点。
-        # 我们需要确保分配的CPU核心不重复。
-        # 以下的 taskset 逻辑比较复杂，暂时先不为每个任务精确分配CPU核心，
-        # 而是依赖于系统的调度。如果需要更精细的控制，可以后续添加。
-        # SLURM的--cpus-per-task通常会处理好CPU分配。
-        # 如果不通过SLURM直接运行，并且ClipKIT本身不支持多线程，
-        # 那么并行运行多个单线程的ClipKIT实例是合理的。
-        # 此处我们假设ClipKIT是单线程的，并行启动多个实例。
-
-        # 运行 ClipKIT (后台运行)
-        # -m kpic-smart-gap: 保留简约性信息位点和恒定位点，并使用智能空位算法修剪
-        # -co: 密码子模式，确保以完整密码子为单位修剪
-        # -l: 生成日志文件 (与输出文件同名，但后缀为 .log)
-        # -of fasta: 指定输出文件格式为FASTA
-        (
-          # 如果需要严格限制每个进程使用的CPU，可以使用taskset
-          # 这里我们先不使用taskset，因为SLURM的--cpus-per-task应该已经处理了资源分配
-          # 如果直接在没有SLURM的机器上运行，并且希望限制每个clipkit进程的CPU，可以取消下面的注释
-          # cpu_start=$(( (job_count % MAX_PARALLEL_JOBS) * CPUS_PER_TASK ))
-          # cpu_end=$(( cpu_start + CPUS_PER_TASK - 1 ))
-          # taskset -c $cpu_start-$cpu_end ${CLIPKIT_CMD} "$file_path" -o "$outfile" -m kpic-smart-gap -co -l -of fasta
-          ${CLIPKIT_CMD} "$file_path" -o "$outfile" -m kpic-smart-gap -co -l -of fasta
-          echo "Finished processing $filename. Log file: ${outfile}.log"
-          echo "-----------------------------------------------------"
-        ) & # 将命令放入后台执行
-
-        # 控制并行作业的数量
-        job_count=$((job_count + 1))
-        if (( job_count % MAX_PARALLEL_JOBS == 0 )); then
-            echo "Waiting for a batch of $MAX_PARALLEL_JOBS jobs to complete..."
-            wait # 等待所有后台作业完成
-            echo "Batch completed."
-        fi
-    fi
-done
-
-# 等待剩余的后台作业完成
-echo "Waiting for any remaining jobs to complete..."
-wait
-echo "All ClipKIT trimming jobs finished."
-echo "Ending at $(date)"
+echo "--- ClipKIT 子任务完成 ---"
+echo "结束时间: $(date)"
