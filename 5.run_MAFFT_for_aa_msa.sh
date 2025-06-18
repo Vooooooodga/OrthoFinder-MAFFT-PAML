@@ -12,30 +12,33 @@ set -o pipefail # 管道中的任何命令失败都算作失败
 #SBATCH --mem=4G          # 每个子任务需要4G内存
 
 ulimit -s unlimited
-echo "Running on $(hostname)"
-echo "Starting at $(date)"
-echo "SLURM_JOB_ID: $SLURM_JOB_ID, SLURM_ARRAY_JOB_ID: $SLURM_ARRAY_JOB_ID, SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 
 # --- 关键检查 ---
+# 获取脚本所在的目录，以确保我们总能找到位于同一目录下的文件列表
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+file_list="${SCRIPT_DIR}/mafft_input_files.list"
+
 # 在脚本早期就检查文件列表是否存在，如果不存在则快速失败并给出提示
-file_list="mafft_input_files.list"
 if [ ! -f "$file_list" ]; then
-    echo "错误：找不到输入文件列表 '$file_list'！" >&2
-    echo "请在提交任务的目录中运行以下命令来创建它：" >&2
+    echo "错误：在脚本目录中找不到输入文件列表 '$file_list'！" >&2
+    echo "请确保 'mafft_input_files.list' 文件与您的 sbatch 脚本位于同一目录。" >&2
+    echo "您可以在该目录中运行以下命令来创建它：" >&2
     echo 'find "$(pwd)/translated_proteins" -type f -name "*.fa" > mafft_input_files.list' >&2
     exit 1
 fi
 
+echo "Running on $(hostname)"
+echo "Starting at $(date)"
+
 # 输入和输出目录定义
-input="./translated_proteins"
 output="./aligned_translated_proteins"
 CORES_PER_MAFFT_JOB=4 # 与 --cpus-per-task 保持一致
 
 # 确保输出目录存在
 mkdir -p $output
+mkdir -p logs
 
 # 从预先生成的文件列表中读取要处理的文件
-# 注意：需要提前运行 'find "$(pwd)/translated_proteins" -type f -name "*.fa" > mafft_input_files.list'
 total_files=$(wc -l < "$file_list")
 
 if [ "$total_files" -eq 0 ]; then
@@ -47,20 +50,20 @@ fi
 task_id=${SLURM_ARRAY_TASK_ID}
 
 # 检查任务ID是否在文件列表范围内
-if [ "$task_id" -gt "$total_files" ]; then
+if [ -z "$task_id" ]; then
+    echo "错误: SLURM_ARRAY_TASK_ID 变量为空。请确认您是通过 'sbatch' 命令提交的作业数组。" >&2
+    exit 1
+elif [ "$task_id" -gt "$total_files" ]; then
     echo "Task ID $task_id is out of bounds. Total files: $total_files. Exiting."
-    # 在这种情况下通常什么都不做，让任务安静退出
     exit 0
 fi
 
 # 使用 sed 命令从文件列表中获取当前任务对应的文件路径
 file_to_process=$(sed -n "${task_id}p" "$file_list")
-
 base_name=$(basename "${file_to_process%.fa}")
 
 # --- 日志重定向 ---
 # 将此任务的 stdout 和 stderr 重定向到与输入文件同名的日志文件中
-# 注意：这之后的 echo 和其他命令的输出都会进入新文件
 exec > "logs/${base_name}.out" 2> "logs/${base_name}.err"
 
 echo "SLURM Job ID: ${SLURM_JOB_ID}"
