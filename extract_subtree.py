@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import copy
 from Bio import Phylo
 from Bio import SeqIO
 
@@ -115,7 +116,7 @@ def prune_and_save_subtree(original_tree, species_to_keep, output_path):
     Prunes a given tree object to retain only the specified list of species and saves it.
     """
     # Work on a copy to not modify the original tree in the loop
-    tree = original_tree.copy()
+    tree = copy.deepcopy(original_tree)
     
     all_tree_leaves = {leaf.name for leaf in tree.get_terminals()}
     
