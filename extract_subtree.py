@@ -93,60 +93,47 @@ def _extract_species_key_from_gene_id(gene_id):
     
     return None # Return None if no match is found
 
-def get_species_from_fasta_dir(fasta_dir):
+def get_species_from_single_fasta(fasta_path):
     """
-    Scans all FASTA files in a directory and returns a unique set of species names.
+    Scans a single FASTA file and returns a unique set of species names.
     """
     species_found = set()
-    if not os.path.isdir(fasta_dir):
-        print(f"错误: FASTA 目录 '{fasta_dir}' 不存在。")
-        return species_found
-
-    print(f"正在扫描目录 '{os.path.basename(fasta_dir)}' 中的FASTA文件...")
-    for filename in os.listdir(fasta_dir):
-        # Accommodate various common FASTA file extensions
-        if filename.lower().endswith(('.fasta', '.fas', '.fa', '.faa', '.fna')):
-            fasta_path = os.path.join(fasta_dir, filename)
-            try:
-                with open(fasta_path, "r") as handle:
-                    for record in SeqIO.parse(handle, "fasta"):
-                        species_key = _extract_species_key_from_gene_id(record.id)
-                        if species_key:
-                            species_found.add(species_key)
-                        else:
-                            print(f"警告: 无法为 '{filename}' 中的序列 '{record.id}' 确定物种。")
-            except Exception as e:
-                print(f"读取FASTA文件 {fasta_path} 时出错: {e}")
-
+    try:
+        with open(fasta_path, "r") as handle:
+            for record in SeqIO.parse(handle, "fasta"):
+                species_key = _extract_species_key_from_gene_id(record.id)
+                if species_key:
+                    species_found.add(species_key)
+                else:
+                    print(f"警告: 无法为 '{os.path.basename(fasta_path)}' 中的序列 '{record.id}' 确定物种。")
+    except Exception as e:
+        print(f"读取FASTA文件 {fasta_path} 时出错: {e}")
     return species_found
 
-def prune_tree_by_species_list(tree_path, species_to_keep, output_path):
+def prune_and_save_subtree(original_tree, species_to_keep, output_path):
     """
-    Prunes a species tree to retain only the specified list of species.
+    Prunes a given tree object to retain only the specified list of species and saves it.
     """
-    try:
-        tree = Phylo.read(tree_path, "newick")
-    except Exception as e:
-        print(f"错误: 无法解析树文件 {tree_path}: {e}")
-        return
-
+    # Work on a copy to not modify the original tree in the loop
+    tree = original_tree.copy()
+    
     all_tree_leaves = {leaf.name for leaf in tree.get_terminals()}
     
-    # Identify which species from the FASTA files are actually present in the tree
+    # Identify which species from the FASTA file are actually present in the tree
     species_in_tree_to_keep = list(species_to_keep.intersection(all_tree_leaves))
     
     # Report species that were in FASTA files but not in the tree
     species_not_in_tree = species_to_keep.difference(all_tree_leaves)
     if species_not_in_tree:
-        print(f"警告: 在FASTA文件中找到但在树中缺失以下 {len(species_not_in_tree)} 个物种，它们将被忽略:")
+        print(f"信息: 在FASTA文件中找到但在主树中缺失以下 {len(species_not_in_tree)} 个物种，它们将被忽略:")
         for sp in sorted(list(species_not_in_tree)):
              print(f"- {sp}")
 
     if not species_in_tree_to_keep:
-        print("错误: FASTA文件中的所有物种均未在提供的树文件中找到。无法创建子树。")
+        print("错误: 此FASTA文件中的所有物种均未在提供的树文件中找到。无法创建子树。")
         return
 
-    print(f"\n在物种树中找到 {len(species_in_tree_to_keep)} 个匹配的物种用于创建子树。")
+    print(f"在主树中找到 {len(species_in_tree_to_keep)} 个匹配的物种用于创建子树。")
 
     try:
         # Prune the tree to keep only the desired species
@@ -163,40 +150,66 @@ def prune_tree_by_species_list(tree_path, species_to_keep, output_path):
 
     # Save the newly pruned tree to the output file
     try:
-        # Create output directory if it doesn't exist
-        output_dir = os.path.dirname(output_path)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-            
         Phylo.write(tree, output_path, "newick")
-        print(f"\n成功创建并保存修剪后的子树到: {output_path}")
-        print(f"子树包含 {len(species_in_tree_to_keep)} 个物种。")
+        print(f"成功创建并保存修剪后的子树到: {os.path.basename(output_path)}")
     except Exception as e:
         print(f"将修剪后的树写入 {output_path} 时出错: {e}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="根据FASTA文件夹中的物种，从一个大型物种树中提取子树。",
+        description="为目录中的每个FASTA文件，从一个大型物种树中提取一个对应的子树。",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("--tree", required=True, help="输入的物种树文件路径 (Newick格式)。")
     parser.add_argument("--fasta_dir", required=True, help="包含FASTA文件的目录路径。")
-    parser.add_argument("--output", required=True, help="输出的修剪后子树文件路径。")
+    parser.add_argument("--output_dir", required=True, help="输出目录，用于存放所有生成的子树文件。")
 
     args = parser.parse_args()
 
-    # Get the unique set of species from all FASTA files
-    species_from_fasta = get_species_from_fasta_dir(args.fasta_dir)
-    
-    if not species_from_fasta:
-        print("未能从FASTA文件中识别出任何物种。程序退出。")
-        return
-    
-    print(f"在FASTA文件中总共找到 {len(species_from_fasta)} 个独特的物种。")
+    # Create output directory
+    if not os.path.isdir(args.output_dir):
+        try:
+            os.makedirs(args.output_dir)
+            print(f"已创建输出目录: {args.output_dir}")
+        except OSError as e:
+            print(f"错误: 无法创建输出目录 '{args.output_dir}': {e}")
+            return
 
-    # Prune the main tree based on the identified species list and save it
-    prune_tree_by_species_list(args.tree, species_from_fasta, args.output)
+    # Load master tree once
+    try:
+        master_tree = Phylo.read(args.tree, "newick")
+        print(f"主树 '{os.path.basename(args.tree)}' 加载成功。")
+    except Exception as e:
+        print(f"错误: 无法解析主树文件 {args.tree}: {e}")
+        return
+
+    # Loop through fasta files
+    processed_files = 0
+    total_files = 0
+    for filename in os.listdir(args.fasta_dir):
+        if filename.lower().endswith(('.fasta', '.fas', '.fa', '.faa', '.fna')):
+            total_files += 1
+            fasta_path = os.path.join(args.fasta_dir, filename)
+            print(f"\n--- 正在处理: {filename} ---")
+            
+            species_from_fasta = get_species_from_single_fasta(fasta_path)
+            
+            if not species_from_fasta:
+                print(f"未能在 '{filename}' 中找到任何可识别的物种。跳过。")
+                continue
+            
+            # Define output path
+            base_name = os.path.splitext(filename)[0]
+            output_filename = f"{base_name}_subtree.treefile"
+            output_path = os.path.join(args.output_dir, output_filename)
+
+            # Prune and save
+            prune_and_save_subtree(master_tree, species_from_fasta, output_path)
+            processed_files += 1
+
+    print(f"\n处理完成。在 '{args.fasta_dir}' 中找到 {total_files} 个FASTA文件，并成功为其中 {processed_files} 个生成了子树。")
+    print(f"所有子树文件已保存至: {args.output_dir}")
 
 if __name__ == "__main__":
     main() 
