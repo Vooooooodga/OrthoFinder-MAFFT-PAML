@@ -94,26 +94,31 @@ def _extract_species_key_from_gene_id(gene_id):
     
     return None # Return None if no match is found
 
-def get_species_from_single_fasta(fasta_path):
+def get_species_to_gene_map_from_fasta(fasta_path):
     """
-    Scans a single FASTA file and returns a unique set of species names.
+    Scans a single FASTA file and returns a map of {species_key: full_gene_id}.
+    If a species has multiple genes, it uses the first one found and prints a warning.
     """
-    species_found = set()
+    species_map = {}
     try:
         with open(fasta_path, "r") as handle:
             for record in SeqIO.parse(handle, "fasta"):
                 species_key = _extract_species_key_from_gene_id(record.id)
                 if species_key:
-                    species_found.add(species_key)
+                    if species_key not in species_map:
+                        species_map[species_key] = record.id
+                    else:
+                        print(f"警告: 物种 '{species_key}' 在文件 '{os.path.basename(fasta_path)}' 中存在多个基因序列。"
+                              f"将使用第一个找到的序列 '{species_map[species_key]}'。")
                 else:
                     print(f"警告: 无法为 '{os.path.basename(fasta_path)}' 中的序列 '{record.id}' 确定物种。")
     except Exception as e:
         print(f"读取FASTA文件 {fasta_path} 时出错: {e}")
-    return species_found
+    return species_map
 
-def prune_and_save_subtree(original_tree, species_to_keep, output_path):
+def prune_and_save_subtree(original_tree, species_to_gene_map, output_path):
     """
-    Prunes a given tree object to retain only the specified list of species and saves it.
+    Prunes a given tree object, renames leaves to full gene IDs, and saves it.
     This version uses a more robust method of pruning by removing unwanted leaves one by one.
     """
     # Work on a copy to not modify the original tree in the loop
@@ -121,6 +126,8 @@ def prune_and_save_subtree(original_tree, species_to_keep, output_path):
     
     all_tree_leaves = {leaf.name for leaf in tree.get_terminals()}
     
+    species_to_keep = set(species_to_gene_map.keys())
+
     # Identify which species from the FASTA file are actually present in the tree
     species_in_tree_to_keep = species_to_keep.intersection(all_tree_leaves)
     
@@ -138,7 +145,6 @@ def prune_and_save_subtree(original_tree, species_to_keep, output_path):
     print(f"在主树中找到 {len(species_in_tree_to_keep)} 个匹配的物种用于创建子树。")
 
     # New pruning strategy: iterate through all leaves and remove the ones not in our target list.
-    # This is more robust than passing a whole list to tree.prune().
     leaves_to_remove = all_tree_leaves - species_in_tree_to_keep
     
     try:
@@ -148,7 +154,18 @@ def prune_and_save_subtree(original_tree, species_to_keep, output_path):
         print(f"修剪树时发生错误: {e}")
         return
 
-    # Save the newly pruned tree to the output file
+    # --- New Step: Rename leaves from species name to full gene ID ---
+    renamed_count = 0
+    for leaf in tree.get_terminals():
+        if leaf.name in species_to_gene_map:
+            leaf.name = species_to_gene_map[leaf.name]
+            renamed_count += 1
+        else:
+            # This should not happen if pruning was successful, but as a safeguard:
+            print(f"警告: 在重命名叶节点时, 树中的叶 '{leaf.name}' 未在物种-基因映射中找到。")
+    print(f"已成功将 {renamed_count} 个叶节点重命名为完整的基因ID。")
+
+    # Save the newly pruned and renamed tree to the output file
     try:
         Phylo.write(tree, output_path, "newick")
         print(f"成功创建并保存修剪后的子树到: {os.path.basename(output_path)}")
@@ -193,9 +210,9 @@ def main():
             fasta_path = os.path.join(args.fasta_dir, filename)
             print(f"\n--- 正在处理: {filename} ---")
             
-            species_from_fasta = get_species_from_single_fasta(fasta_path)
+            species_map = get_species_to_gene_map_from_fasta(fasta_path)
             
-            if not species_from_fasta:
+            if not species_map:
                 print(f"未能在 '{filename}' 中找到任何可识别的物种。跳过。")
                 continue
             
@@ -204,8 +221,8 @@ def main():
             output_filename = f"{base_name}_subtree.treefile"
             output_path = os.path.join(args.output_dir, output_filename)
 
-            # Prune and save
-            prune_and_save_subtree(master_tree, species_from_fasta, output_path)
+            # Prune, rename, and save
+            prune_and_save_subtree(master_tree, species_map, output_path)
             processed_files += 1
 
     print(f"\n处理完成。在 '{args.fasta_dir}' 中找到 {total_files} 个FASTA文件，并成功为其中 {processed_files} 个生成了子树。")
