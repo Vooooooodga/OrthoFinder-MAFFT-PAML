@@ -114,6 +114,7 @@ def get_species_from_single_fasta(fasta_path):
 def prune_and_save_subtree(original_tree, species_to_keep, output_path):
     """
     Prunes a given tree object to retain only the specified list of species and saves it.
+    This version uses a more robust method of pruning by removing unwanted leaves one by one.
     """
     # Work on a copy to not modify the original tree in the loop
     tree = copy.deepcopy(original_tree)
@@ -121,7 +122,7 @@ def prune_and_save_subtree(original_tree, species_to_keep, output_path):
     all_tree_leaves = {leaf.name for leaf in tree.get_terminals()}
     
     # Identify which species from the FASTA file are actually present in the tree
-    species_in_tree_to_keep = list(species_to_keep.intersection(all_tree_leaves))
+    species_in_tree_to_keep = species_to_keep.intersection(all_tree_leaves)
     
     # Report species that were in FASTA files but not in the tree
     species_not_in_tree = species_to_keep.difference(all_tree_leaves)
@@ -136,18 +137,16 @@ def prune_and_save_subtree(original_tree, species_to_keep, output_path):
 
     print(f"在主树中找到 {len(species_in_tree_to_keep)} 个匹配的物种用于创建子树。")
 
+    # New pruning strategy: iterate through all leaves and remove the ones not in our target list.
+    # This is more robust than passing a whole list to tree.prune().
+    leaves_to_remove = all_tree_leaves - species_in_tree_to_keep
+    
     try:
-        # Prune the tree to keep only the desired species
-        tree.prune(species_in_tree_to_keep)
+        for leaf_name in leaves_to_remove:
+            tree.prune(leaf_name)
     except Exception as e:
-        # Bio.Phylo.prune can raise an error if the resulting tree is trivial (e.g., only one leaf).
-        # We handle this by creating a new tree with just that single node.
-        if len(species_in_tree_to_keep) == 1:
-             from Bio.Phylo.BaseTree import Tree as BioTree, Clade
-             tree = BioTree(root=Clade(name=species_in_tree_to_keep[0]))
-        else:
-            print(f"修剪树时发生错误: {e}")
-            return
+        print(f"修剪树时发生错误: {e}")
+        return
 
     # Save the newly pruned tree to the output file
     try:
