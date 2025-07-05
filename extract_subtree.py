@@ -169,6 +169,32 @@ def prune_and_save_subtree(original_tree, species_to_gene_map, output_path):
     try:
         Phylo.write(tree, output_path, "newick")
         print(f"成功创建并保存修剪后的子树到: {os.path.basename(output_path)}")
+
+        # Per user request, forcefully remove wrapping single quotes that Bio.Phylo adds to leaf names.
+        # This can potentially create non-standard Newick files if names have special characters.
+        with open(output_path, 'r') as file:
+            content = file.read()
+        
+        modified_content = content
+        made_changes = False
+
+        # Iterate through the actual leaf names in our final tree
+        for leaf in tree.get_terminals():
+            leaf_name = leaf.name
+            # Bio.Phylo quotes names with special characters by wrapping them in single quotes
+            # and escaping internal single quotes by doubling them (e.g., O'Malley -> 'O''Malley').
+            quoted_name = "'" + leaf_name.replace("'", "''") + "'"
+            
+            # We perform a targeted replacement of the quoted version with the original.
+            if quoted_name in modified_content:
+                modified_content = modified_content.replace(quoted_name, leaf_name)
+                made_changes = True
+        
+        if made_changes:
+            with open(output_path, 'w') as file:
+                file.write(modified_content)
+            print(f"信息: 已根据要求从 {os.path.basename(output_path)} 中移除了叶节点名称的外部单引号。")
+
     except Exception as e:
         print(f"将修剪后的树写入 {output_path} 时出错: {e}")
 
