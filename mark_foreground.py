@@ -3,6 +3,7 @@
 import argparse
 import os
 import pandas as pd
+import re
 from Bio import Phylo # 使用 BioPython
 
 # Hardcoded list of species names, with underscores, sorted by length descending for longest match first
@@ -137,21 +138,26 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
         putative_species_key_from_gene = _extract_species_key_from_gene_id(original_gene_id)
         
         is_target_leaf = False
-        
+        # Default to original gene ID if no mapping, or if key extraction fails
+        species_name_for_output = original_gene_id 
+
         if putative_species_key_from_gene:
             normalized_putative_species_key = _normalize_name_for_matching(putative_species_key_from_gene)
+            
             social_data = normalized_sociality_map.get(normalized_putative_species_key)
             
             if social_data:
+                species_name_for_output = social_data['original_name'].replace(' ', '_') # Use the name from CSV for output, replacing spaces with underscores
                 if social_data['social_level_normalized'] == target_sociality_normalized:
                     is_target_leaf = True
+                # print(f"Info: Gene '{original_gene_id}' (key: '{normalized_putative_species_key}') mapped to species '{species_name_for_output}', sociality: {social_data['social_level_normalized']}, target: {target_sociality_normalized}, is_target_leaf: {is_target_leaf}")
             else:
                 print(f"Warning: Derived species key '{putative_species_key_from_gene}' (normalized: '{normalized_putative_species_key}') from gene '{original_gene_id}' in tree '{os.path.basename(tree_path)}' not found in sociality file. Treating as non-target.")
         else:
             print(f"Warning: Could not derive species key from gene ID '{original_gene_id}' in tree '{os.path.basename(tree_path)}'. Treating as non-target.")
             
-        # We only need to know if the leaf is a target or not. We will not be renaming it.
         leaf_social_info[original_gene_id] = {
+            'species_name_for_output': species_name_for_output,
             'is_target': is_target_leaf
         }
 
@@ -179,11 +185,18 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
         if all_desc_leaf_are_target and (clade.is_terminal() or current_clade_descendant_leaves):
              nodes_to_be_marked.append(clade)
 
-    # Step 3: Leaf node names (original gene IDs) are intentionally preserved.
-    # We do not rename leaves to species names to avoid truncation or loss of information.
+    # Step 3: Original leaf node names (gene IDs) are PRESERVED. Renaming to species names is SKIPPED.
+    # The original plan was to rename all leaf nodes to their species names.
+    # This is done for all leaves, regardless of whether their branch is marked.
+    # for leaf_node in tree.get_terminals():
+    #     original_gene_id = leaf_node.name 
+    #     if original_gene_id in leaf_social_info: # Check if we have mapping info for this gene ID
+    #         leaf_node.name = leaf_social_info[original_gene_id]['species_name_for_output']
+        # If original_gene_id was not in leaf_social_info (e.g. unnamed leaf, or error in processing it),
+        # its name remains as is (which might be the original gene ID or None).
 
     # Step 4: Mark the identified clades by appending the PAML marker.
-    # If a marked clade is a leaf, the marker is appended to its original full gene ID.
+    # If a marked clade is a leaf, its name has NOW been updated to species_name_for_output.
     for clade_to_mark in nodes_to_be_marked:
         current_name = clade_to_mark.name if clade_to_mark.name else ""
         
@@ -204,8 +217,26 @@ def _mark_tree_and_save_biopython(tree_path, normalized_sociality_map, target_so
 
     try:
         # Using Phylo.write without format_branch_length, accepting default precision
-        Phylo.write(tree, output_path, "newick") 
-        # print(f"Saved marked tree to {output_path}")
+        Phylo.write(tree, output_path, "newick")
+        
+        # Post-process the file to move the PAML marker outside of any quotes.
+        # This handles cases where Bio.Phylo quotes a leaf name that we have marked,
+        # changing "'Node Name#1'" to "'Node Name'#1".
+        with open(output_path, 'r') as f:
+            content = f.read()
+
+        # Create a regex to find a quoted string that ends with the PAML marker.
+        escaped_marker = re.escape(paml_marker)
+        # It looks for: ' (quote), followed by (.+?) (any characters, non-greedy, captured as group 1),
+        # followed by (marker) (the marker, captured as group 2), followed by ' (quote).
+        pattern = re.compile(f"'(.+?)({escaped_marker})'")
+        modified_content = pattern.sub(r"'\1'\2", content)
+        
+        if modified_content != content:
+            with open(output_path, 'w') as f:
+                f.write(modified_content)
+            # print(f"Info: Corrected PAML marker position for quoted names in {os.path.basename(output_path)}")
+
     except Exception as e:
         print(f"Error writing marked tree {output_path} with BioPython: {e}")
 
